@@ -40,6 +40,8 @@ export default function App() {
     password: "",
     phone: "",
     address: "",
+    postalCode: "",
+    city: "",
   });
 
   const [purchaseForm, setPurchaseForm] = useState({
@@ -108,12 +110,22 @@ export default function App() {
     setUploadedFiles(files);
   };
 
+  const normalizedEmail = authForm.email.trim().toLowerCase();
+
+  const formattedAddress = [
+    authForm.address,
+    authForm.postalCode,
+    authForm.city,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
   const signUp = async (e) => {
     e.preventDefault();
     setMessage("");
 
     const { data, error } = await supabase.auth.signUp({
-      email: authForm.email,
+      email: normalizedEmail,
       password: authForm.password,
       options: {
         data: {
@@ -121,6 +133,9 @@ export default function App() {
           last_name: authForm.lastName,
           phone: authForm.phone,
           address: authForm.address,
+          postal_code: authForm.postalCode,
+          city: authForm.city,
+          full_address: formattedAddress,
         },
       },
     });
@@ -130,9 +145,26 @@ export default function App() {
       return;
     }
 
+    if (
+      data.user &&
+      data.user.identities &&
+      data.user.identities.length === 0
+    ) {
+      setMessage(
+        "Un compte existe déjà probablement avec cette adresse e-mail. Essayez de vous connecter ou de réinitialiser votre mot de passe.",
+      );
+      setMode("login");
+      return;
+    }
+
+    if (data.session) {
+      setMessage("Compte créé avec succès. Vous êtes maintenant connecté.");
+      return;
+    }
+
     if (data.user) {
       setMessage(
-        "Compte créé avec succès. Vous pouvez maintenant vous connecter.",
+        "Compte créé. Vérifiez votre boîte mail pour confirmer votre adresse avant de vous connecter.",
       );
       setMode("login");
     }
@@ -143,11 +175,18 @@ export default function App() {
     setMessage("");
 
     const { error } = await supabase.auth.signInWithPassword({
-      email: authForm.email,
+      email: normalizedEmail,
       password: authForm.password,
     });
 
     if (error) {
+      if (error.message === "Invalid login credentials") {
+        setMessage(
+          "Connexion impossible : vérifiez votre mot de passe ou confirmez d'abord votre adresse e-mail si un message de validation vous a été envoyé.",
+        );
+        return;
+      }
+
       setMessage(error.message);
       return;
     }
@@ -214,7 +253,17 @@ export default function App() {
           session.user.user_metadata?.last_name || authForm.lastName || "",
         email: session.user.email,
         phone: session.user.user_metadata?.phone || authForm.phone || "",
-        address: session.user.user_metadata?.address || authForm.address || "",
+        address:
+          session.user.user_metadata?.full_address ||
+          [
+            session.user.user_metadata?.address,
+            session.user.user_metadata?.postal_code,
+            session.user.user_metadata?.city,
+          ]
+            .filter(Boolean)
+            .join(", ") ||
+          formattedAddress ||
+          "",
         fuel: purchaseForm.fuel,
         quantity: Number(purchaseForm.qty),
         purchase_date: purchaseForm.purchaseDate || null,
@@ -307,7 +356,9 @@ export default function App() {
                 <div className="auth-buttons">
                   <button
                     type="button"
-                    className={`btn ${mode === "login" ? "btn-primary" : "btn-secondary"}`}
+                    className={`btn ${
+                      mode === "login" ? "btn-primary" : "btn-secondary"
+                    }`}
                     onClick={() => {
                       setMode("login");
                       setMessage("");
@@ -317,7 +368,9 @@ export default function App() {
                   </button>
                   <button
                     type="button"
-                    className={`btn ${mode === "register" ? "btn-primary" : "btn-secondary"}`}
+                    className={`btn ${
+                      mode === "register" ? "btn-primary" : "btn-secondary"
+                    }`}
                     onClick={() => {
                       setMode("register");
                       setMessage("");
@@ -377,6 +430,30 @@ export default function App() {
                           }
                         />
                       </div>
+
+                      <div className="form-row">
+                        <div className="form-block">
+                          <label>Code postal</label>
+                          <input
+                            type="text"
+                            value={authForm.postalCode}
+                            onChange={(e) =>
+                              handleAuthChange("postalCode", e.target.value)
+                            }
+                          />
+                        </div>
+
+                        <div className="form-block">
+                          <label>Ville</label>
+                          <input
+                            type="text"
+                            value={authForm.city}
+                            onChange={(e) =>
+                              handleAuthChange("city", e.target.value)
+                            }
+                          />
+                        </div>
+                      </div>
                     </>
                   )}
 
@@ -386,7 +463,10 @@ export default function App() {
                       type="email"
                       value={authForm.email}
                       onChange={(e) =>
-                        handleAuthChange("email", e.target.value)
+                        handleAuthChange(
+                          "email",
+                          e.target.value.trim().toLowerCase(),
+                        )
                       }
                       required
                     />
@@ -660,7 +740,9 @@ export default function App() {
 
                     <button
                       type="button"
-                      className={`btn ${available ? "btn-primary" : "btn-secondary"}`}
+                      className={`btn ${
+                        available ? "btn-primary" : "btn-secondary"
+                      }`}
                       disabled={!available}
                       onClick={() => setSelectedReward(reward.title)}
                     >
