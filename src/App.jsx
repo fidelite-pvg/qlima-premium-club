@@ -251,16 +251,13 @@ export default function App() {
     return (
       <div className="page">
         <section className="hero-shell">
-          <div className="hero-brandbar">
-            <span>Qlima.fr</span>
-            <span>|</span>
-            <span>Comfortable living</span>
-          </div>
+          <div className="hero-brandbar"></div>
 
           <img src="/qlima-logo.png" alt="Qlima" className="hero-logo" />
 
           <div className="hero-shape">
             <h1>Qlima Premium Club</h1>
+
             <p>Votre programme de fidélité en ligne</p>
           </div>
 

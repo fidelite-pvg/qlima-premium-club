@@ -58,17 +58,26 @@ button {
 
 .hero-shell {
   position: relative;
-  min-height: 100vh;
-  padding: 28px 28px 36px;
-  background:
-    radial-gradient(
-      circle at top left,
-      #eef3ef 0%,
-      #eef3ef 25%,
-      transparent 25%
-    ),
-    linear-gradient(180deg, #f7f6f1 0%, #efeee7 100%);
   overflow: hidden;
+  padding: 80px 40px;
+  background: linear-gradient(180deg, #f7f6f1 0%, #efeee7 100%);
+}
+
+.hero-shell::before {
+  content: "";
+  position: absolute;
+  top: -220px;
+  left: -180px;
+  width: 700px;
+  height: 700px;
+  border-radius: 50%;
+  background: #87a290;
+  z-index: 0;
+}
+
+.hero-shell > * {
+  position: relative;
+  z-index: 1;
 }
 
 .hero-brandbar,
@@ -99,11 +108,12 @@ button {
 }
 
 .hero-shape h1 {
-  margin: 0 0 12px;
+  margin: 0 0 50px;
   font-weight: 300;
   font-size: 52px;
   line-height: 0.98;
   letter-spacing: -0.02em;
+  color: white;
 }
 
 .hero-shape p {
@@ -112,6 +122,7 @@ button {
   line-height: 1.15;
   font-weight: 300;
   opacity: 0.96;
+  color: #32645c;
 }
 
 .hero-content {
@@ -550,9 +561,14 @@ textarea:focus {
   }
 
   .hero-shape {
-    width: 300px;
-    height: 300px;
-    padding: 84px 30px 30px;
+    background: #32645c;
+    color: white;
+    width: 420px;
+    height: 420px;
+    border-radius: 32px 32px 140px 32px;
+    padding: 110px 40px 40px;
+    position: relative;
+    z-index: 1;
   }
 
   .hero-shape h1 {
@@ -573,14 +589,6 @@ textarea:focus {
     position: static;
     width: 110px;
     margin: 18px 0 0 auto;
-  }
-
-  .hero-shape {
-    position: relative;
-    width: 100%;
-    height: auto;
-    border-bottom-right-radius: 90px;
-    margin-top: 18px;
   }
 
   .hero-content {
