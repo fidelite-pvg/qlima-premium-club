@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 import { supabase } from "./lib/supabase";
+import Admin from "./Admin";
 
 const fuels = [
   { name: "Kristal Shine", points: 4 },
@@ -47,10 +48,10 @@ export default function App() {
   const [purchaseForm, setPurchaseForm] = useState({
     fuel: "Kristal Shine",
     qty: 1,
-    purchaseDate: "",
-    invoiceNumber: "",
     comments: "",
   });
+
+  const isAdmin = session?.user?.email === "fidelite@pvg.eu";
 
   useEffect(() => {
     const getInitialSession = async () => {
@@ -71,10 +72,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (session?.user) {
+    if (session?.user && !isAdmin) {
       fetchSubmissions();
     }
-  }, [session]);
+  }, [session, isAdmin]);
 
   const estimatedPoints = useMemo(() => {
     const selectedFuel = fuels.find((fuel) => fuel.name === purchaseForm.fuel);
@@ -120,6 +121,19 @@ export default function App() {
     .filter(Boolean)
     .join(", ");
 
+  const getStatusLabel = (status) => {
+    switch (status) {
+      case "validated":
+        return "Validée";
+      case "rejected":
+        return "Refusée";
+      case "needs_info":
+        return "À compléter";
+      default:
+        return "En attente";
+    }
+  };
+
   const signUp = async (e) => {
     e.preventDefault();
     setMessage("");
@@ -151,7 +165,7 @@ export default function App() {
       data.user.identities.length === 0
     ) {
       setMessage(
-        "Un compte existe déjà probablement avec cette adresse e-mail. Essayez de vous connecter ou de réinitialiser votre mot de passe.",
+        "Un compte existe déjà avec cette adresse e-mail. Essayez de vous connecter ou de réinitialiser votre mot de passe.",
       );
       setMode("login");
       return;
@@ -164,7 +178,7 @@ export default function App() {
 
     if (data.user) {
       setMessage(
-        "Compte créé. Vérifiez votre boîte mail pour confirmer votre adresse avant de vous connecter.",
+        "Compte créé. Vérifiez votre boîte mail pour confirmer votre adresse e-mail avant de vous connecter.",
       );
       setMode("login");
     }
@@ -182,7 +196,7 @@ export default function App() {
     if (error) {
       if (error.message === "Invalid login credentials") {
         setMessage(
-          "Connexion impossible : vérifiez votre mot de passe ou confirmez d'abord votre adresse e-mail si un message de validation vous a été envoyé.",
+          "Connexion impossible : soit le mot de passe est incorrect, soit l’adresse e-mail n’a pas encore été confirmée. Utilisez “Mot de passe oublié” si besoin.",
         );
         return;
       }
@@ -192,6 +206,40 @@ export default function App() {
     }
 
     setMessage("");
+  };
+
+  const resetPassword = async () => {
+    setMessage("");
+
+    if (!normalizedEmail) {
+      setMessage(
+        "Saisissez votre adresse e-mail pour réinitialiser votre mot de passe.",
+      );
+      return;
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      normalizedEmail,
+      {
+        redirectTo: `${window.location.origin}/reset-password`,
+      },
+    );
+
+    if (error) {
+      if (error.message?.toLowerCase().includes("rate limit")) {
+        setMessage(
+          "Trop de demandes d’e-mails ont été effectuées. Attendez un peu avant de réessayer.",
+        );
+        return;
+      }
+
+      setMessage(error.message);
+      return;
+    }
+
+    setMessage(
+      "Si un compte existe avec cette adresse, un e-mail de réinitialisation du mot de passe a été envoyé.",
+    );
   };
 
   const signOut = async () => {
@@ -245,7 +293,7 @@ export default function App() {
     try {
       const uploaded = await uploadFiles();
 
-      const { error } = await supabase.from("loyalty_submissions").insert({
+      const submissionPayload = {
         user_id: session.user.id,
         first_name:
           session.user.user_metadata?.first_name || authForm.firstName || "",
@@ -266,23 +314,31 @@ export default function App() {
           "",
         fuel: purchaseForm.fuel,
         quantity: Number(purchaseForm.qty),
-        purchase_date: purchaseForm.purchaseDate || null,
-        invoice_number: purchaseForm.invoiceNumber,
         comments: purchaseForm.comments,
         estimated_points: estimatedPoints,
         points_awarded: 0,
         status: "pending",
         documents: uploaded,
-      });
+      };
+
+      const { data: insertedSubmission, error } = await supabase
+        .from("loyalty_submissions")
+        .insert(submissionPayload)
+        .select()
+        .single();
 
       if (error) throw error;
+
+      await supabase.functions.invoke("notify-new-submission", {
+        body: {
+          submission: insertedSubmission,
+        },
+      });
 
       setMessage("Votre demande a bien été envoyée.");
       setPurchaseForm({
         fuel: "Kristal Shine",
         qty: 1,
-        purchaseDate: "",
-        invoiceNumber: "",
         comments: "",
       });
       setUploadedFiles([]);
@@ -306,7 +362,6 @@ export default function App() {
 
           <div className="hero-shape">
             <h1>Qlima Premium Club</h1>
-
             <p>Votre programme de fidélité en ligne</p>
           </div>
 
@@ -463,10 +518,7 @@ export default function App() {
                       type="email"
                       value={authForm.email}
                       onChange={(e) =>
-                        handleAuthChange(
-                          "email",
-                          e.target.value.trim().toLowerCase(),
-                        )
+                        handleAuthChange("email", e.target.value.toLowerCase())
                       }
                       required
                     />
@@ -490,6 +542,18 @@ export default function App() {
                     </button>
                   </div>
 
+                  {mode === "login" && (
+                    <div style={{ marginTop: "12px" }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={resetPassword}
+                      >
+                        Mot de passe oublié
+                      </button>
+                    </div>
+                  )}
+
                   {message ? <p className="muted">{message}</p> : null}
                 </form>
               </div>
@@ -504,6 +568,10 @@ export default function App() {
         </section>
       </div>
     );
+  }
+
+  if (session && isAdmin) {
+    return <Admin session={session} onBack={signOut} />;
   }
 
   return (
@@ -551,11 +619,6 @@ export default function App() {
                     ? `${nextReward.points} points`
                     : "Palier max atteint"}
                 </strong>
-              </div>
-
-              <div className="stat-box">
-                <span>Statut</span>
-                <strong>Compte actif</strong>
               </div>
             </div>
 
@@ -622,30 +685,6 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="form-row">
-                <div className="form-block">
-                  <label>Date d’achat</label>
-                  <input
-                    type="date"
-                    value={purchaseForm.purchaseDate}
-                    onChange={(e) =>
-                      handlePurchaseChange("purchaseDate", e.target.value)
-                    }
-                  />
-                </div>
-
-                <div className="form-block">
-                  <label>Numéro de facture</label>
-                  <input
-                    type="text"
-                    value={purchaseForm.invoiceNumber}
-                    onChange={(e) =>
-                      handlePurchaseChange("invoiceNumber", e.target.value)
-                    }
-                  />
-                </div>
-              </div>
-
               <div className="form-block">
                 <label>Déposer les justificatifs</label>
                 <input type="file" multiple onChange={handleFiles} />
@@ -702,15 +741,17 @@ export default function App() {
                         Quantité : {submission.quantity} • Estimation :{" "}
                         {submission.estimated_points} pts
                       </p>
+
+                      {submission.admin_message ? (
+                        <p className="muted" style={{ marginTop: "8px" }}>
+                          Message de l’équipe : {submission.admin_message}
+                        </p>
+                      ) : null}
                     </div>
 
                     <div className="submission-right">
                       <span className="mini-chip">
-                        {submission.status === "pending"
-                          ? "En attente"
-                          : submission.status === "validated"
-                            ? "Validé"
-                            : submission.status}
+                        {getStatusLabel(submission.status)}
                       </span>
                     </div>
                   </div>
