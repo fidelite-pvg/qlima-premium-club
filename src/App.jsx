@@ -134,6 +134,19 @@ export default function App() {
     }
   };
 
+  const getStatusClass = (status) => {
+    switch (status) {
+      case "validated":
+        return "status-chip status-validated";
+      case "needs_info":
+        return "status-chip status-needs-info";
+      case "rejected":
+        return "status-chip status-rejected";
+      default:
+        return "status-chip status-pending";
+    }
+  };
+
   const signUp = async (e) => {
     e.preventDefault();
     setMessage("");
@@ -750,7 +763,7 @@ export default function App() {
                     </div>
 
                     <div className="submission-right">
-                      <span className="mini-chip">
+                      <span className={getStatusClass(submission.status)}>
                         {getStatusLabel(submission.status)}
                       </span>
                     </div>

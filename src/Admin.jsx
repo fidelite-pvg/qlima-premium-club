@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { supabase } from "./lib/supabase";
-import "./App.css";
 
 export default function Admin({ session, onBack }) {
   const [submissions, setSubmissions] = useState([]);
@@ -8,14 +7,11 @@ export default function Admin({ session, onBack }) {
   const [message, setMessage] = useState("");
   const [adminMessages, setAdminMessages] = useState({});
   const [activeTab, setActiveTab] = useState("pending");
-
-  const isAdmin = session?.user?.email === "fidelite@pvg.eu";
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
-    if (isAdmin) {
-      fetchAllSubmissions();
-    }
-  }, [isAdmin]);
+    fetchAllSubmissions();
+  }, []);
 
   const fetchAllSubmissions = async () => {
     setLoading(true);
@@ -39,11 +35,24 @@ export default function Admin({ session, onBack }) {
       case "validated":
         return "Validée";
       case "needs_info":
-        return "En attente de régularisation";
+        return "À compléter";
       case "rejected":
         return "Refusée";
       default:
         return "En cours";
+    }
+  };
+
+  const getStatusClass = (status) => {
+    switch (status) {
+      case "validated":
+        return "status-chip status-validated";
+      case "needs_info":
+        return "status-chip status-needs-info";
+      case "rejected":
+        return "status-chip status-rejected";
+      default:
+        return "status-chip status-pending";
     }
   };
 
@@ -71,40 +80,35 @@ export default function Admin({ session, onBack }) {
       return;
     }
 
+    const { error: notifyError } = await supabase.functions.invoke(
+      "notify-submission-status",
+      {
+        body: {
+          submission: {
+            ...submission,
+            ...payload,
+          },
+        },
+      },
+    );
+
+    if (notifyError) {
+      console.error("Erreur envoi email :", notifyError.message);
+    }
+
     setMessage("Demande mise à jour avec succès.");
     fetchAllSubmissions();
   };
 
-  // 🔥 CORRECTION ICI : ouverture sécurisée des fichiers
-  const openDocument = async (path) => {
-    const { data, error } = await supabase.storage
-      .from("loyalty-documents")
-      .createSignedUrl(path, 60);
-
-    if (error) {
-      console.error("Erreur ouverture document :", error);
-      setMessage(`Impossible d’ouvrir ce document : ${error.message}`);
-      return;
-    }
-
-    if (data?.signedUrl) {
-      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
-    }
-  };
-
-  // 🔥 FILTRES PAR ONGLET
   const pendingSubmissions = submissions.filter((s) => s.status === "pending");
-
-  const needsInfoSubmissions = submissions.filter(
-    (s) => s.status === "needs_info",
-  );
-
   const validatedSubmissions = submissions.filter(
     (s) => s.status === "validated",
   );
-
   const rejectedSubmissions = submissions.filter(
     (s) => s.status === "rejected",
+  );
+  const needsInfoSubmissions = submissions.filter(
+    (s) => s.status === "needs_info",
   );
 
   const visibleSubmissions =
@@ -116,18 +120,19 @@ export default function Admin({ session, onBack }) {
           ? rejectedSubmissions
           : pendingSubmissions;
 
-  if (!isAdmin) {
+  const filteredSubmissions = visibleSubmissions.filter((submission) => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return true;
+
     return (
-      <div className="dashboard-page">
-        <div className="panel">
-          <h2>Accès refusé</h2>
-          <p className="muted">Cette page est réservée à l’administration.</p>
-          <button className="btn btn-secondary" onClick={onBack}>
-            Retour
-          </button>
-        </div>
-      </div>
+      submission.first_name?.toLowerCase().includes(term) ||
+      submission.last_name?.toLowerCase().includes(term) ||
+      submission.email?.toLowerCase().includes(term)
     );
+  });
+
+  if (loading) {
+    return <div className="center-screen">Chargement...</div>;
   }
 
   return (
@@ -136,55 +141,80 @@ export default function Admin({ session, onBack }) {
         <div className="topbar-left">
           <div>
             <p className="topbar-subtitle">Qlima Premium Club</p>
-            <h1>Administration des demandes</h1>
+            <h1>Administration</h1>
           </div>
         </div>
 
         <div className="topbar-right">
+          <span className="points-chip">
+            {pendingSubmissions.length} demande
+            {pendingSubmissions.length > 1 ? "s" : ""} en cours
+          </span>
+          <img src="/qlima-logo.png" alt="Qlima" className="topbar-logo" />
           <button className="btn btn-secondary" onClick={onBack}>
             Déconnexion
           </button>
         </div>
       </header>
 
-      <main className="dashboard-grid" style={{ gridTemplateColumns: "1fr" }}>
-        <section className="left-column">
-          {/* ONGLET */}
-          <div className="panel">
-            <h2>Administration des demandes</h2>
+      <main className="dashboard-grid">
+        <section className="left-column" style={{ gridColumn: "1 / -1" }}>
+          <div className="panel soft-panel">
+            <div className="section-shape">
+              <h2>Administration des demandes</h2>
+              <p>
+                Gérez les dossiers clients, les validations et les demandes de
+                complément.
+              </p>
+            </div>
+
             {message ? <p className="muted">{message}</p> : null}
 
+            <div className="form-block">
+              <label>Rechercher un client</label>
+              <input
+                type="text"
+                placeholder="Nom, prénom ou e-mail"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+
             <div
-              style={{
-                display: "flex",
-                gap: "10px",
-                flexWrap: "wrap",
-                marginTop: "16px",
-              }}
+              className="auth-buttons"
+              style={{ flexWrap: "wrap", marginTop: "20px" }}
             >
               <button
-                className={`btn ${activeTab === "pending" ? "btn-primary" : "btn-secondary"}`}
+                className={`btn ${
+                  activeTab === "pending" ? "btn-primary" : "btn-secondary"
+                }`}
                 onClick={() => setActiveTab("pending")}
               >
-                Demandes en cours ({pendingSubmissions.length})
+                En cours ({pendingSubmissions.length})
               </button>
 
               <button
-                className={`btn ${activeTab === "needs_info" ? "btn-primary" : "btn-secondary"}`}
+                className={`btn ${
+                  activeTab === "needs_info" ? "btn-primary" : "btn-secondary"
+                }`}
                 onClick={() => setActiveTab("needs_info")}
               >
                 À compléter ({needsInfoSubmissions.length})
               </button>
 
               <button
-                className={`btn ${activeTab === "validated" ? "btn-primary" : "btn-secondary"}`}
+                className={`btn ${
+                  activeTab === "validated" ? "btn-primary" : "btn-secondary"
+                }`}
                 onClick={() => setActiveTab("validated")}
               >
                 Validées ({validatedSubmissions.length})
               </button>
 
               <button
-                className={`btn ${activeTab === "rejected" ? "btn-primary" : "btn-secondary"}`}
+                className={`btn ${
+                  activeTab === "rejected" ? "btn-primary" : "btn-secondary"
+                }`}
                 onClick={() => setActiveTab("rejected")}
               >
                 Refusées ({rejectedSubmissions.length})
@@ -192,63 +222,103 @@ export default function Admin({ session, onBack }) {
             </div>
           </div>
 
-          {/* LISTE */}
-          {loading ? (
+          {filteredSubmissions.length === 0 ? (
             <div className="panel">
-              <p className="muted">Chargement...</p>
-            </div>
-          ) : visibleSubmissions.length === 0 ? (
-            <div className="panel">
-              <p className="muted">Aucune demande.</p>
+              <p className="muted">Aucune demande dans cet onglet.</p>
             </div>
           ) : (
-            visibleSubmissions.map((submission) => (
-              <div className="panel" key={submission.id}>
-                <h3>
-                  {submission.first_name} {submission.last_name}
-                </h3>
-
-                <p className="muted">{submission.email}</p>
-
-                <p>
-                  <strong>Produit :</strong> {submission.fuel}
-                </p>
-                <p>
-                  <strong>Quantité :</strong> {submission.quantity}
-                </p>
-                <p>
-                  <strong>Points :</strong> {submission.estimated_points}
-                </p>
-                <p>
-                  <strong>Statut :</strong> {getStatusLabel(submission.status)}
-                </p>
-
-                {/* DOCUMENTS */}
-                {submission.documents?.length ? (
-                  <div style={{ marginTop: "12px" }}>
-                    <strong>Documents :</strong>
-                    <ul className="file-list">
-                      {submission.documents.map((doc, index) => (
-                        <li key={index}>
-                          <button
-                            className="btn btn-secondary"
-                            onClick={() => openDocument(doc.file_path)}
-                          >
-                            Ouvrir : {doc.file_name}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
+            filteredSubmissions.map((submission) => (
+              <div
+                key={submission.id}
+                className="panel"
+                style={{ marginTop: "20px" }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "16px",
+                    flexWrap: "wrap",
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <div>
+                    <h2 style={{ marginBottom: "8px" }}>
+                      {submission.first_name} {submission.last_name}
+                    </h2>
+                    <p className="muted" style={{ marginTop: 0 }}>
+                      {submission.email}
+                    </p>
                   </div>
-                ) : (
-                  <p className="muted">Aucun document</p>
-                )}
 
-                {/* MESSAGE ADMIN */}
-                <div className="form-block" style={{ marginTop: "16px" }}>
+                  <span className={getStatusClass(submission.status)}>
+                    {getStatusLabel(submission.status)}
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: "12px",
+                    marginTop: "20px",
+                  }}
+                >
+                  <div className="stat-box">
+                    <span>Produit</span>
+                    <strong style={{ fontSize: "20px" }}>
+                      {submission.fuel || "—"}
+                    </strong>
+                  </div>
+
+                  <div className="stat-box">
+                    <span>Quantité</span>
+                    <strong style={{ fontSize: "20px" }}>
+                      {submission.quantity || 0}
+                    </strong>
+                  </div>
+
+                  <div className="stat-box">
+                    <span>Points estimés</span>
+                    <strong style={{ fontSize: "20px" }}>
+                      {submission.estimated_points || 0}
+                    </strong>
+                  </div>
+
+                  <div className="stat-box">
+                    <span>Points attribués</span>
+                    <strong style={{ fontSize: "20px" }}>
+                      {submission.points_awarded || 0}
+                    </strong>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: "20px" }}>
+                  <p className="muted" style={{ marginBottom: "6px" }}>
+                    <strong>Téléphone :</strong> {submission.phone || "—"}
+                  </p>
+                  <p className="muted" style={{ marginBottom: "6px" }}>
+                    <strong>Adresse :</strong> {submission.address || "—"}
+                  </p>
+                  <p className="muted" style={{ marginBottom: "6px" }}>
+                    <strong>Date :</strong>{" "}
+                    {submission.created_at
+                      ? new Date(submission.created_at).toLocaleString("fr-FR")
+                      : "—"}
+                  </p>
+                  {submission.comments ? (
+                    <p className="muted" style={{ marginBottom: "6px" }}>
+                      <strong>Commentaire client :</strong>{" "}
+                      {submission.comments}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="form-block" style={{ marginTop: "20px" }}>
                   <label>Message au client</label>
                   <textarea
-                    rows="3"
+                    rows="4"
+                    placeholder="Ajouter un message visible par le client"
                     value={
                       adminMessages[submission.id] ??
                       submission.admin_message ??
@@ -263,9 +333,9 @@ export default function Admin({ session, onBack }) {
                   />
                 </div>
 
-                {/* ACTIONS */}
                 <div
-                  style={{ display: "flex", gap: "10px", marginTop: "10px" }}
+                  className="auth-buttons"
+                  style={{ flexWrap: "wrap", marginTop: "20px" }}
                 >
                   <button
                     className="btn btn-primary"
@@ -273,7 +343,7 @@ export default function Admin({ session, onBack }) {
                       updateSubmissionStatus(submission, "validated")
                     }
                   >
-                    Valider
+                    Validation rapide
                   </button>
 
                   <button
@@ -282,7 +352,7 @@ export default function Admin({ session, onBack }) {
                       updateSubmissionStatus(submission, "needs_info")
                     }
                   >
-                    Complément
+                    Demander un complément
                   </button>
 
                   <button
