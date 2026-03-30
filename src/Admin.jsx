@@ -94,9 +94,14 @@ export default function Admin({ session, onBack }) {
 
     if (notifyError) {
       console.error("Erreur envoi email :", notifyError.message);
+      setMessage(
+        `Demande mise à jour, mais l’e-mail n’a pas pu être envoyé : ${notifyError.message}`,
+      );
+      fetchAllSubmissions();
+      return;
     }
 
-    setMessage("Demande mise à jour avec succès.");
+    setMessage("Demande mise à jour avec succès et e-mail envoyé.");
     fetchAllSubmissions();
   };
 

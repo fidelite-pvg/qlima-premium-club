@@ -1,18 +1,17 @@
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const MAIL_FROM = Deno.env.get("MAIL_FROM");
 const MAIL_REPLY_TO = Deno.env.get("MAIL_REPLY_TO");
+const ADMIN_EMAIL = Deno.env.get("ADMIN_EMAIL");
 
 type Submission = {
   id?: string;
   first_name?: string | null;
   last_name?: string | null;
   email?: string | null;
-  status?: string | null;
-  admin_message?: string | null;
-  points_awarded?: number | null;
-  estimated_points?: number | null;
   fuel?: string | null;
   quantity?: number | null;
+  estimated_points?: number | null;
+  comments?: string | null;
 };
 
 const corsHeaders = {
@@ -30,128 +29,15 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#039;");
 }
 
-function buildEmailContent(submission: Submission) {
-  const firstName = submission.first_name?.trim() || "client";
-  const adminMessage = submission.admin_message?.trim() || "";
-  const safeMessage = adminMessage ? escapeHtml(adminMessage) : "";
-  const points = submission.points_awarded ?? submission.estimated_points ?? 0;
-
-  let subject = "Mise à jour de votre demande Qlima Premium Club";
-  let html = "";
-  let text = "";
-
-  if (submission.status === "validated") {
-    subject = "Votre demande Qlima Premium Club a été validée";
-
-    html = `
-      <div style="font-family: Arial, sans-serif; color: #192021; line-height: 1.6;">
-        <h2>Bonjour ${escapeHtml(firstName)},</h2>
-        <p>Bonne nouvelle : votre demande a bien été <strong>validée</strong>.</p>
-        <p><strong>Points attribués :</strong> ${points}</p>
-        ${
-          safeMessage
-            ? `<p><strong>Message de notre équipe :</strong><br>${safeMessage}</p>`
-            : ""
-        }
-        <p>Merci de votre fidélité.</p>
-        <p>L’équipe Qlima Premium Club</p>
-      </div>
-    `;
-
-    text = `Bonjour ${firstName},
-
-Bonne nouvelle : votre demande a bien été validée.
-
-Points attribués : ${points}
-
-${adminMessage ? `Message de notre équipe : ${adminMessage}\n\n` : ""}Merci de votre fidélité.
-
-L’équipe Qlima Premium Club`;
-  } else if (submission.status === "rejected") {
-    subject = "Votre demande Qlima Premium Club n’a pas pu être validée";
-
-    html = `
-      <div style="font-family: Arial, sans-serif; color: #192021; line-height: 1.6;">
-        <h2>Bonjour ${escapeHtml(firstName)},</h2>
-        <p>Votre demande n’a pas pu être <strong>validée</strong>.</p>
-        ${
-          safeMessage
-            ? `<p><strong>Précision de notre équipe :</strong><br>${safeMessage}</p>`
-            : ""
-        }
-        <p>Vous pouvez vérifier votre dossier et effectuer une nouvelle demande si nécessaire.</p>
-        <p>L’équipe Qlima Premium Club</p>
-      </div>
-    `;
-
-    text = `Bonjour ${firstName},
-
-Votre demande n’a pas pu être validée.
-
-${adminMessage ? `Précision de notre équipe : ${adminMessage}\n\n` : ""}Vous pouvez vérifier votre dossier et effectuer une nouvelle demande si nécessaire.
-
-L’équipe Qlima Premium Club`;
-  } else if (submission.status === "needs_info") {
-    subject = "Des informations complémentaires sont nécessaires";
-
-    html = `
-      <div style="font-family: Arial, sans-serif; color: #192021; line-height: 1.6;">
-        <h2>Bonjour ${escapeHtml(firstName)},</h2>
-        <p>Votre demande nécessite des <strong>informations complémentaires</strong>.</p>
-        ${
-          safeMessage
-            ? `<p><strong>Complément demandé :</strong><br>${safeMessage}</p>`
-            : ""
-        }
-        <p>Merci de compléter votre dossier afin que nous puissions poursuivre son traitement.</p>
-        <p>L’équipe Qlima Premium Club</p>
-      </div>
-    `;
-
-    text = `Bonjour ${firstName},
-
-Votre demande nécessite des informations complémentaires.
-
-${adminMessage ? `Complément demandé : ${adminMessage}\n\n` : ""}Merci de compléter votre dossier afin que nous puissions poursuivre son traitement.
-
-L’équipe Qlima Premium Club`;
-  } else {
-    html = `
-      <div style="font-family: Arial, sans-serif; color: #192021; line-height: 1.6;">
-        <h2>Bonjour ${escapeHtml(firstName)},</h2>
-        <p>Le statut de votre demande a été mis à jour.</p>
-        ${
-          safeMessage
-            ? `<p><strong>Message de notre équipe :</strong><br>${safeMessage}</p>`
-            : ""
-        }
-        <p>L’équipe Qlima Premium Club</p>
-      </div>
-    `;
-
-    text = `Bonjour ${firstName},
-
-Le statut de votre demande a été mis à jour.
-
-${adminMessage ? `Message de notre équipe : ${adminMessage}\n\n` : ""}L’équipe Qlima Premium Club`;
-  }
-
-  return { subject, html, text };
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    if (!RESEND_API_KEY) {
-      throw new Error("RESEND_API_KEY manquant");
-    }
-
-    if (!MAIL_FROM) {
-      throw new Error("MAIL_FROM manquant");
-    }
+    if (!RESEND_API_KEY) throw new Error("RESEND_API_KEY manquant");
+    if (!MAIL_FROM) throw new Error("MAIL_FROM manquant");
+    if (!ADMIN_EMAIL) throw new Error("ADMIN_EMAIL manquant");
 
     const body = await req.json();
     const submission: Submission | undefined = body?.submission;
@@ -159,27 +45,45 @@ Deno.serve(async (req: Request) => {
     if (!submission) {
       return new Response(JSON.stringify({ error: "submission manquant" }), {
         status: 400,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    if (!submission.email) {
-      return new Response(
-        JSON.stringify({ error: "email client manquant" }),
-        {
-          status: 400,
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json",
-          },
-        },
-      );
-    }
+    const fullName =
+      `${submission.first_name || ""} ${submission.last_name || ""}`.trim() ||
+      "Client inconnu";
 
-    const { subject, html, text } = buildEmailContent(submission);
+    const subject = "Nouvelle demande de fidélité à vérifier";
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; color: #192021; line-height: 1.6;">
+        <h2>Nouvelle demande reçue</h2>
+        <p>Une nouvelle demande de fidélité a été soumise.</p>
+        <ul>
+          <li><strong>Nom :</strong> ${escapeHtml(fullName)}</li>
+          <li><strong>Email :</strong> ${escapeHtml(submission.email || "Non renseigné")}</li>
+          <li><strong>Combustible :</strong> ${escapeHtml(submission.fuel || "Non renseigné")}</li>
+          <li><strong>Quantité :</strong> ${escapeHtml(String(submission.quantity ?? ""))}</li>
+          <li><strong>Points estimés :</strong> ${escapeHtml(String(submission.estimated_points ?? 0))}</li>
+        </ul>
+        ${
+          submission.comments
+            ? `<p><strong>Commentaire :</strong><br>${escapeHtml(submission.comments)}</p>`
+            : ""
+        }
+        <p>Connectez-vous à l’administration pour traiter la demande.</p>
+      </div>
+    `;
+
+    const text = `Nouvelle demande reçue
+
+Nom : ${fullName}
+Email : ${submission.email || "Non renseigné"}
+Combustible : ${submission.fuel || "Non renseigné"}
+Quantité : ${submission.quantity ?? ""}
+Points estimés : ${submission.estimated_points ?? 0}
+
+${submission.comments ? `Commentaire : ${submission.comments}\n\n` : ""}Connectez-vous à l’administration pour traiter la demande.`;
 
     const resendResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -189,7 +93,7 @@ Deno.serve(async (req: Request) => {
       },
       body: JSON.stringify({
         from: MAIL_FROM,
-        to: [submission.email],
+        to: [ADMIN_EMAIL],
         reply_to: MAIL_REPLY_TO ? [MAIL_REPLY_TO] : undefined,
         subject,
         html,
@@ -202,19 +106,13 @@ Deno.serve(async (req: Request) => {
     if (!resendResponse.ok) {
       return new Response(JSON.stringify(resendData), {
         status: resendResponse.status,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     return new Response(JSON.stringify({ success: true, data: resendData }), {
       status: 200,
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "application/json",
-      },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
     return new Response(
@@ -223,10 +121,7 @@ Deno.serve(async (req: Request) => {
       }),
       {
         status: 500,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       },
     );
   }

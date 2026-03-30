@@ -342,11 +342,23 @@ export default function App() {
 
       if (error) throw error;
 
-      await supabase.functions.invoke("notify-new-submission", {
-        body: {
-          submission: insertedSubmission,
+      const { error: notifyError } = await supabase.functions.invoke(
+        "notify-new-submission",
+        {
+          body: {
+            submission: insertedSubmission,
+          },
         },
-      });
+      );
+
+      if (notifyError) {
+        console.error("Erreur envoi email admin :", notifyError.message);
+        setMessage(
+          `Votre demande a bien été envoyée, mais l’e-mail de notification admin a échoué : ${notifyError.message}`,
+        );
+      } else {
+        setMessage("Votre demande a bien été envoyée.");
+      }
 
       setMessage("Votre demande a bien été envoyée.");
       setPurchaseForm({
