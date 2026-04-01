@@ -8,10 +8,45 @@ export default function Admin({ session, onBack }) {
   const [adminMessages, setAdminMessages] = useState({});
   const [activeTab, setActiveTab] = useState("pending");
   const [searchTerm, setSearchTerm] = useState("");
+  const [rewardRedemptions, setRewardRedemptions] = useState([]);
+  const [rewardMessage, setRewardMessage] = useState("");
 
   useEffect(() => {
     fetchAllSubmissions();
+    fetchRewardRedemptions();
   }, []);
+
+  const fetchRewardRedemptions = async () => {
+    const { data, error } = await supabase
+      .from("reward_redemptions")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Erreur chargement reward_redemptions :", error);
+      return;
+    }
+
+    setRewardRedemptions(data || []);
+  };
+
+  const updateRewardStatus = async (id, status) => {
+    setRewardMessage("");
+
+    const { error } = await supabase
+      .from("reward_redemptions")
+      .update({ status })
+      .eq("id", id);
+
+    if (error) {
+      console.error("Erreur update reward status :", error);
+      setRewardMessage("Erreur lors de la mise à jour du statut.");
+      return;
+    }
+
+    setRewardMessage("Statut de la récompense mis à jour.");
+    fetchRewardRedemptions();
+  };
 
   const fetchAllSubmissions = async () => {
     setLoading(true);
@@ -51,6 +86,32 @@ export default function Admin({ session, onBack }) {
         return "status-chip status-needs-info";
       case "rejected":
         return "status-chip status-rejected";
+      default:
+        return "status-chip status-pending";
+    }
+  };
+
+  const getRewardStatusLabel = (status) => {
+    switch (status) {
+      case "approved":
+        return "Traitée";
+      case "rejected":
+        return "Refusée";
+      case "cancelled":
+        return "Annulée";
+      default:
+        return "En attente";
+    }
+  };
+
+  const getRewardStatusClass = (status) => {
+    switch (status) {
+      case "approved":
+        return "status-chip status-validated";
+      case "rejected":
+        return "status-chip status-rejected";
+      case "cancelled":
+        return "status-chip status-needs-info";
       default:
         return "status-chip status-pending";
     }
@@ -372,6 +433,133 @@ export default function Admin({ session, onBack }) {
               </div>
             ))
           )}
+
+          <div className="panel" style={{ marginTop: "20px" }}>
+            <div className="section-shape">
+              <h2>Demandes de récompenses</h2>
+              <p>
+                Consultez les récompenses demandées par les clients et mettez à
+                jour leur statut.
+              </p>
+            </div>
+
+            {rewardMessage ? <p className="muted">{rewardMessage}</p> : null}
+
+            {rewardRedemptions.length === 0 ? (
+              <p className="muted">
+                Aucune demande de récompense pour le moment.
+              </p>
+            ) : (
+              rewardRedemptions.map((item) => (
+                <div
+                  key={item.id}
+                  className="panel"
+                  style={{
+                    marginTop: "20px",
+                    padding: "20px",
+                    background: "#fff",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: "16px",
+                      flexWrap: "wrap",
+                      alignItems: "flex-start",
+                    }}
+                  >
+                    <div>
+                      <h2 style={{ marginBottom: "8px" }}>
+                        {item.reward_title}
+                      </h2>
+                      <p className="muted" style={{ marginTop: 0 }}>
+                        {item.first_name} {item.last_name}
+                      </p>
+                      <p className="muted" style={{ marginTop: 0 }}>
+                        {item.email}
+                      </p>
+                    </div>
+
+                    <span className={getRewardStatusClass(item.status)}>
+                      {getRewardStatusLabel(item.status)}
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fit, minmax(220px, 1fr))",
+                      gap: "12px",
+                      marginTop: "20px",
+                    }}
+                  >
+                    <div className="stat-box">
+                      <span>Type</span>
+                      <strong style={{ fontSize: "20px" }}>
+                        {item.reward_type === "refund"
+                          ? "Remboursement"
+                          : "Récompense"}
+                      </strong>
+                    </div>
+
+                    <div className="stat-box">
+                      <span>Points utilisés</span>
+                      <strong style={{ fontSize: "20px" }}>
+                        {item.points_used || 0}
+                      </strong>
+                    </div>
+
+                    <div className="stat-box">
+                      <span>Date de demande</span>
+                      <strong style={{ fontSize: "20px" }}>
+                        {item.created_at
+                          ? new Date(item.created_at).toLocaleDateString(
+                              "fr-FR",
+                            )
+                          : "—"}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {item.reward_type === "refund" ? (
+                    <div style={{ marginTop: "20px" }}>
+                      <p className="muted" style={{ marginBottom: "6px" }}>
+                        <strong>RIB :</strong> {item.rib || "Non renseigné"}
+                      </p>
+                      <p className="muted" style={{ marginBottom: "6px" }}>
+                        <strong>IBAN :</strong> {item.iban || "Non renseigné"}
+                      </p>
+                      <p className="muted" style={{ marginBottom: "6px" }}>
+                        <strong>Titulaire :</strong>{" "}
+                        {item.bank_account_holder || "Non renseigné"}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  <div
+                    className="auth-buttons"
+                    style={{ flexWrap: "wrap", marginTop: "20px" }}
+                  >
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => updateRewardStatus(item.id, "approved")}
+                    >
+                      Valider
+                    </button>
+
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => updateRewardStatus(item.id, "rejected")}
+                    >
+                      Refuser
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </section>
       </main>
     </div>

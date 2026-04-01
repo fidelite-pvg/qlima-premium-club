@@ -3,15 +3,18 @@ const MAIL_FROM = Deno.env.get("MAIL_FROM");
 const MAIL_REPLY_TO = Deno.env.get("MAIL_REPLY_TO");
 const ADMIN_EMAIL = Deno.env.get("ADMIN_EMAIL");
 
-type Submission = {
+type Redemption = {
   id?: string;
   first_name?: string | null;
   last_name?: string | null;
   email?: string | null;
-  fuel?: string | null;
-  quantity?: number | null;
-  estimated_points?: number | null;
-  comments?: string | null;
+  reward_title?: string | null;
+  reward_type?: string | null;
+  points_used?: number | null;
+  rib?: string | null;
+  iban?: string | null;
+  bank_account_holder?: string | null;
+  status?: string | null;
 };
 
 const corsHeaders = {
@@ -40,50 +43,60 @@ Deno.serve(async (req: Request) => {
     if (!ADMIN_EMAIL) throw new Error("ADMIN_EMAIL manquant");
 
     const body = await req.json();
-    const submission: Submission | undefined = body?.submission;
+    const redemption: Redemption | undefined = body?.redemption;
 
-    if (!submission) {
-      return new Response(JSON.stringify({ error: "submission manquant" }), {
+    if (!redemption) {
+      return new Response(JSON.stringify({ error: "redemption manquant" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const fullName =
-      `${submission.first_name || ""} ${submission.last_name || ""}`.trim() ||
+      `${redemption.first_name || ""} ${redemption.last_name || ""}`.trim() ||
       "Client inconnu";
 
-    const subject = "Nouvelle demande de fidélité à vérifier";
+    const subject = "Nouvelle demande de récompense à traiter";
+
+    const bankBlock =
+      redemption.reward_type === "refund"
+        ? `
+          <li><strong>RIB :</strong> ${escapeHtml(redemption.rib || "Non renseigné")}</li>
+          <li><strong>IBAN :</strong> ${escapeHtml(redemption.iban || "Non renseigné")}</li>
+          <li><strong>Titulaire du compte :</strong> ${escapeHtml(redemption.bank_account_holder || "Non renseigné")}</li>
+        `
+        : "";
 
     const html = `
       <div style="font-family: Arial, sans-serif; color: #192021; line-height: 1.6;">
-        <h2>Nouvelle demande reçue</h2>
-        <p>Une nouvelle demande de fidélité a été soumise.</p>
+        <h2>Nouvelle récompense demandée</h2>
+        <p>Un client a utilisé ses points pour demander une récompense.</p>
         <ul>
           <li><strong>Nom :</strong> ${escapeHtml(fullName)}</li>
-          <li><strong>Email :</strong> ${escapeHtml(submission.email || "Non renseigné")}</li>
-          <li><strong>Combustible :</strong> ${escapeHtml(submission.fuel || "Non renseigné")}</li>
-          <li><strong>Quantité :</strong> ${escapeHtml(String(submission.quantity ?? ""))}</li>
-          <li><strong>Points estimés :</strong> ${escapeHtml(String(submission.estimated_points ?? 0))}</li>
+          <li><strong>Email :</strong> ${escapeHtml(redemption.email || "Non renseigné")}</li>
+          <li><strong>Récompense :</strong> ${escapeHtml(redemption.reward_title || "Non renseigné")}</li>
+          <li><strong>Type :</strong> ${escapeHtml(redemption.reward_type || "standard")}</li>
+          <li><strong>Points utilisés :</strong> ${escapeHtml(String(redemption.points_used ?? 0))}</li>
+          <li><strong>Statut :</strong> ${escapeHtml(redemption.status || "pending")}</li>
+          ${bankBlock}
         </ul>
-        ${
-          submission.comments
-            ? `<p><strong>Commentaire :</strong><br>${escapeHtml(submission.comments)}</p>`
-            : ""
-        }
-        <p>Connectez-vous à l’administration pour traiter la demande.</p>
+        <p>Connectez-vous à l’administration pour traiter cette demande.</p>
       </div>
     `;
 
-    const text = `Nouvelle demande reçue
+    const text = `Nouvelle récompense demandée
 
 Nom : ${fullName}
-Email : ${submission.email || "Non renseigné"}
-Combustible : ${submission.fuel || "Non renseigné"}
-Quantité : ${submission.quantity ?? ""}
-Points estimés : ${submission.estimated_points ?? 0}
-
-${submission.comments ? `Commentaire : ${submission.comments}\n\n` : ""}Connectez-vous à l’administration pour traiter la demande.`;
+Email : ${redemption.email || "Non renseigné"}
+Récompense : ${redemption.reward_title || "Non renseigné"}
+Type : ${redemption.reward_type || "standard"}
+Points utilisés : ${redemption.points_used ?? 0}
+Statut : ${redemption.status || "pending"}
+${redemption.reward_type === "refund" ? `RIB : ${redemption.rib || "Non renseigné"}
+IBAN : ${redemption.iban || "Non renseigné"}
+Titulaire du compte : ${redemption.bank_account_holder || "Non renseigné"}
+` : ""}
+Connectez-vous à l’administration pour traiter cette demande.`;
 
     const resendResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",

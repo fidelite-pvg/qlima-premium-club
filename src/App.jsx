@@ -12,17 +12,34 @@ const fuels = [
 ];
 
 const rewards = [
-  { points: 10, title: "1 an de garantie supplémentaire" },
-  { points: 15, title: "12€ remboursés" },
-  { points: 20, title: "Pompe à combustible liquide électrique Qlima offerte" },
+  {
+    points: 10,
+    title: "1 an de garantie supplémentaire",
+    type: "standard",
+  },
+  { points: 15, title: "12€ remboursés", type: "refund" },
+  {
+    points: 20,
+    title: "Pompe à combustible liquide électrique Qlima offerte",
+    type: "standard",
+  },
   {
     points: 40,
     title:
       "50€ remboursés sur l'achat d'un appareil à combustible liquide Qlima",
+    type: "refund",
   },
-  { points: 60, title: "Un bidon de Kristal Shine remboursé" },
-  { points: 80, title: "Un poêle à combustible liquide SRE 4035 C offert" },
-  { points: 100, title: "Un poêle à combustible liquide SRE 9046 C-2 offert" },
+  { points: 60, title: "Un bidon de Kristal Shine remboursé", type: "refund" },
+  {
+    points: 80,
+    title: "Un poêle à combustible liquide SRE 4035 C offert",
+    type: "standard",
+  },
+  {
+    points: 100,
+    title: "Un poêle à combustible liquide SRE 9046 C-2 offert",
+    type: "standard",
+  },
 ];
 
 export default function App() {
@@ -33,6 +50,15 @@ export default function App() {
   const [selectedReward, setSelectedReward] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [submissions, setSubmissions] = useState([]);
+  const [rewardRedemptions, setRewardRedemptions] = useState([]);
+  const [rewardModalOpen, setRewardModalOpen] = useState(false);
+  const [rewardModalMessage, setRewardModalMessage] = useState("");
+  const [rewardForm, setRewardForm] = useState({
+    rib: "",
+    iban: "",
+    accountHolder: "",
+  });
+  const [isSubmittingReward, setIsSubmittingReward] = useState(false);
 
   const [authForm, setAuthForm] = useState({
     firstName: "",
@@ -74,6 +100,7 @@ export default function App() {
   useEffect(() => {
     if (session?.user && !isAdmin) {
       fetchSubmissions();
+      fetchRewardRedemptions();
     }
   }, [session, isAdmin]);
 
@@ -84,11 +111,21 @@ export default function App() {
       : 0;
   }, [purchaseForm]);
 
+  const spentPoints = useMemo(() => {
+    return rewardRedemptions
+      .filter(
+        (item) => item.status !== "cancelled" && item.status !== "rejected",
+      )
+      .reduce((acc, item) => acc + (item.points_used || 0), 0);
+  }, [rewardRedemptions]);
+
   const userPoints = useMemo(() => {
-    return submissions
+    const earnedPoints = submissions
       .filter((item) => item.status === "validated")
       .reduce((acc, item) => acc + (item.points_awarded || 0), 0);
-  }, [submissions]);
+
+    return Math.max(earnedPoints - spentPoints, 0);
+  }, [submissions, spentPoints]);
 
   const nextReward = useMemo(() => {
     return rewards.find((reward) => reward.points > userPoints) || null;
@@ -97,6 +134,8 @@ export default function App() {
   const progressPercent = nextReward
     ? Math.min((userPoints / nextReward.points) * 100, 100)
     : 100;
+
+  const latestRedemption = rewardRedemptions[0] || null;
 
   const handleAuthChange = (field, value) => {
     setAuthForm((prev) => ({ ...prev, [field]: value }));
@@ -145,6 +184,41 @@ export default function App() {
       default:
         return "status-chip status-pending";
     }
+  };
+
+  const getRewardStatusLabel = (status) => {
+    switch (status) {
+      case "approved":
+        return "Traitée";
+      case "rejected":
+        return "Refusée";
+      case "cancelled":
+        return "Annulée";
+      default:
+        return "En attente";
+    }
+  };
+
+  const handleRewardFormChange = (field, value) => {
+    setRewardForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const openRewardModal = (reward) => {
+    setSelectedReward(reward);
+    setRewardModalOpen(true);
+    setMessage("");
+    setRewardModalMessage("");
+  };
+
+  const closeRewardModal = () => {
+    setRewardModalOpen(false);
+    setSelectedReward("");
+    setRewardModalMessage("");
+    setRewardForm({
+      rib: "",
+      iban: "",
+      accountHolder: "",
+    });
   };
 
   const signUp = async (e) => {
@@ -260,17 +334,43 @@ export default function App() {
     setSubmissions([]);
     setUploadedFiles([]);
     setSelectedReward("");
+    setRewardRedemptions([]);
+    setRewardModalOpen(false);
+    setRewardModalMessage("");
   };
 
   const fetchSubmissions = async () => {
+    if (!session?.user) return;
+
     const { data, error } = await supabase
       .from("loyalty_submissions")
       .select("*")
+      .eq("user_id", session.user.id)
       .order("created_at", { ascending: false });
 
-    if (!error && data) {
-      setSubmissions(data);
+    if (error) {
+      console.error("Erreur chargement demandes :", error);
+      return;
     }
+
+    setSubmissions(data || []);
+  };
+
+  const fetchRewardRedemptions = async () => {
+    if (!session?.user) return;
+
+    const { data, error } = await supabase
+      .from("reward_redemptions")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Erreur chargement historique récompenses :", error);
+      return;
+    }
+
+    setRewardRedemptions(data || []);
   };
 
   const uploadFiles = async () => {
@@ -360,7 +460,6 @@ export default function App() {
         setMessage("Votre demande a bien été envoyée.");
       }
 
-      setMessage("Votre demande a bien été envoyée.");
       setPurchaseForm({
         fuel: "Kristal Shine",
         qty: 1,
@@ -370,6 +469,89 @@ export default function App() {
       fetchSubmissions();
     } catch (error) {
       setMessage(error.message || "Erreur lors de l’envoi.");
+    }
+  };
+
+  const handleConfirmReward = async () => {
+    if (!session?.user || !selectedReward) return;
+
+    const isRefundReward = selectedReward.type === "refund";
+
+    if (
+      isRefundReward &&
+      (!rewardForm.rib.trim() ||
+        !rewardForm.iban.trim() ||
+        !rewardForm.accountHolder.trim())
+    ) {
+      setRewardModalMessage(
+        "Merci de renseigner le RIB, l’IBAN et le nom du titulaire du compte bancaire.",
+      );
+      return;
+    }
+
+    setMessage("");
+    setRewardModalMessage("");
+    setIsSubmittingReward(true);
+
+    try {
+      const redemptionPayload = {
+        user_id: session.user.id,
+        first_name:
+          session.user.user_metadata?.first_name || authForm.firstName || "",
+        last_name:
+          session.user.user_metadata?.last_name || authForm.lastName || "",
+        email: session.user.email,
+        reward_title: selectedReward.title,
+        reward_type: selectedReward.type,
+        points_used: selectedReward.points,
+        status: "pending",
+        rib: isRefundReward ? rewardForm.rib.trim() : null,
+        iban: isRefundReward ? rewardForm.iban.trim() : null,
+        bank_account_holder: isRefundReward
+          ? rewardForm.accountHolder.trim()
+          : null,
+      };
+
+      const { data: insertedRedemption, error } = await supabase
+        .from("reward_redemptions")
+        .insert(redemptionPayload)
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Erreur insertion reward_redemptions :", error);
+        throw error;
+      }
+
+      const { error: notifyError } = await supabase.functions.invoke(
+        "notify-reward-redemption",
+        {
+          body: {
+            redemption: insertedRedemption,
+          },
+        },
+      );
+
+      if (notifyError) {
+        console.error("Erreur envoi email admin récompense :", notifyError);
+        setMessage(
+          "Votre demande de récompense a bien été enregistrée, mais l’e-mail de notification admin a échoué.",
+        );
+      } else {
+        setMessage(
+          "Votre demande de récompense a bien été enregistrée. Vos points ont été débités.",
+        );
+      }
+
+      await fetchRewardRedemptions();
+      closeRewardModal();
+    } catch (error) {
+      console.error("Erreur complète handleConfirmReward :", error);
+      setRewardModalMessage(
+        error?.message || "Erreur lors de l’enregistrement de la récompense.",
+      );
+    } finally {
+      setIsSubmittingReward(false);
     }
   };
 
@@ -810,7 +992,7 @@ export default function App() {
                         available ? "btn-primary" : "btn-secondary"
                       }`}
                       disabled={!available}
-                      onClick={() => setSelectedReward(reward.title)}
+                      onClick={() => openRewardModal(reward)}
                     >
                       {available ? "Choisir" : "Indisponible"}
                     </button>
@@ -823,17 +1005,92 @@ export default function App() {
           <div className="panel">
             <h2>Récompense sélectionnée</h2>
 
-            {selectedReward ? (
+            {latestRedemption ? (
               <div className="selected-reward">
-                <strong>{selectedReward}</strong>
+                <strong>{latestRedemption.reward_title}</strong>
                 <p className="muted">
-                  Votre sélection est enregistrée localement pour le moment.
+                  Statut : {getRewardStatusLabel(latestRedemption.status)} •{" "}
+                  {latestRedemption.points_used} points utilisés
                 </p>
               </div>
             ) : (
               <p className="muted">
                 Aucune récompense sélectionnée pour le moment.
               </p>
+            )}
+          </div>
+
+          <div className="panel">
+            <h2>Historique des récompenses</h2>
+
+            {rewardRedemptions.length === 0 ? (
+              <p className="muted">
+                Vous n’avez encore effectué aucune demande de récompense.
+              </p>
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gap: "12px",
+                  marginTop: "16px",
+                }}
+              >
+                {rewardRedemptions.map((item) => (
+                  <div
+                    key={item.id}
+                    style={{
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "12px",
+                      padding: "16px",
+                      background: "#fff",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: "12px",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <strong>{item.reward_title}</strong>
+                      <span>{item.points_used} points</span>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: "8px",
+                        fontSize: "14px",
+                        color: "#667085",
+                      }}
+                    >
+                      Demandé le{" "}
+                      {new Date(item.created_at).toLocaleDateString("fr-FR", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                      })}
+                    </div>
+
+                    <div style={{ marginTop: "8px" }}>
+                      Statut :{" "}
+                      <strong>{getRewardStatusLabel(item.status)}</strong>
+                    </div>
+
+                    {item.reward_type === "refund" ? (
+                      <div
+                        style={{
+                          marginTop: "8px",
+                          fontSize: "14px",
+                          color: "#667085",
+                        }}
+                      >
+                        Demande de remboursement bancaire
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 
@@ -851,6 +1108,84 @@ export default function App() {
           </div>
         </aside>
       </main>
+
+      {rewardModalOpen && selectedReward ? (
+        <div className="modal-overlay" onClick={closeRewardModal}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <h2>Confirmer votre récompense</h2>
+            <p className="muted">
+              Êtes-vous certain(e) de vouloir utiliser{" "}
+              <strong>{selectedReward.points} points</strong> pour{" "}
+              <strong>{selectedReward.title}</strong> ?
+            </p>
+
+            {selectedReward.type === "refund" ? (
+              <div className="refund-fields">
+                <div className="form-block">
+                  <label>RIB</label>
+                  <input
+                    type="text"
+                    value={rewardForm.rib}
+                    onChange={(e) =>
+                      handleRewardFormChange("rib", e.target.value)
+                    }
+                    placeholder="Renseignez votre RIB"
+                  />
+                </div>
+
+                <div className="form-block">
+                  <label>IBAN</label>
+                  <input
+                    type="text"
+                    value={rewardForm.iban}
+                    onChange={(e) =>
+                      handleRewardFormChange("iban", e.target.value)
+                    }
+                    placeholder="Renseignez votre IBAN"
+                  />
+                </div>
+
+                <div className="form-block">
+                  <label>Nom du titulaire du compte</label>
+                  <input
+                    type="text"
+                    value={rewardForm.accountHolder}
+                    onChange={(e) =>
+                      handleRewardFormChange("accountHolder", e.target.value)
+                    }
+                    placeholder="Nom et prénom du titulaire"
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            {rewardModalMessage ? (
+              <p style={{ marginTop: "16px", color: "#b42318" }}>
+                {rewardModalMessage}
+              </p>
+            ) : null}
+
+            <div className="auth-buttons" style={{ marginTop: "24px" }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={closeRewardModal}
+                disabled={isSubmittingReward}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleConfirmReward}
+                disabled={isSubmittingReward}
+              >
+                {isSubmittingReward ? "Validation..." : "Confirmer"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

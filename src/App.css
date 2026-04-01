@@ -560,6 +560,29 @@ textarea:focus {
   padding: 18px;
 }
 
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(25, 32, 33, 0.52);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+}
+
+.modal-card {
+  width: min(100%, 560px);
+  background: white;
+  border-radius: 24px;
+  padding: 28px;
+  box-shadow: 0 24px 60px rgba(25, 32, 33, 0.22);
+}
+
+.refund-fields {
+  margin-top: 18px;
+}
+
 .forest-panel {
   background: var(--qlima-forest);
   color: white;
