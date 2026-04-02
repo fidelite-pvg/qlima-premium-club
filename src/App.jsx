@@ -74,6 +74,7 @@ export default function App() {
   });
   const [rewardInvoiceFile, setRewardInvoiceFile] = useState(null);
   const [rewardBankDetailsFile, setRewardBankDetailsFile] = useState(null);
+  const [rewardPurchaseProofFile, setRewardPurchaseProofFile] = useState(null);
   const [isSubmittingReward, setIsSubmittingReward] = useState(false);
 
   const [authForm, setAuthForm] = useState({
@@ -230,6 +231,11 @@ export default function App() {
     setRewardBankDetailsFile(file);
   };
 
+  const handleRewardPurchaseProofFileChange = (e) => {
+    const file = e.target.files?.[0] || null;
+    setRewardPurchaseProofFile(file);
+  };
+
   const openRewardModal = (reward) => {
     setSelectedReward(reward);
     setRewardModalOpen(true);
@@ -241,7 +247,7 @@ export default function App() {
     });
     setRewardInvoiceFile(null);
     setRewardBankDetailsFile(null);
-    setRewardBankDetailsFile(null);
+    setRewardPurchaseProofFile(null);
   };
 
   const closeRewardModal = () => {
@@ -254,7 +260,7 @@ export default function App() {
     });
     setRewardInvoiceFile(null);
     setRewardBankDetailsFile(null);
-    setRewardBankDetailsFile(null);
+    setRewardPurchaseProofFile(null);
   };
 
   const signUp = async (e) => {
@@ -545,6 +551,10 @@ export default function App() {
     const isRefundReward = selectedReward.type === "refund";
     const isWarrantyReward = selectedReward.code === "extended_warranty_1y";
 
+    const requiresPurchaseProof =
+      selectedReward.code === "refund_kristal_shine" ||
+      selectedReward.code === "refund_50_appliance";
+
     if (isRefundReward) {
       if (!rewardBankDetailsFile) {
         setRewardModalMessage(
@@ -557,6 +567,17 @@ export default function App() {
       if (!fileName.endsWith(".pdf")) {
         setRewardModalMessage(
           "Le RIB doit être transmis en format PDF uniquement.",
+        );
+        return;
+      }
+
+      if (requiresPurchaseProof && !rewardPurchaseProofFile) {
+        const label =
+          selectedReward.code === "refund_kristal_shine"
+            ? "du bidon de Kristal Shine"
+            : "de l’appareil à combustible liquide Qlima";
+        setRewardModalMessage(
+          `Merci d’ajouter le ticket de caisse ou la facture prouvant l’achat ${label}.`,
         );
         return;
       }
@@ -601,11 +622,21 @@ export default function App() {
         );
       }
 
+      let uploadedPurchaseProof = null;
+
       if (isRefundReward) {
         uploadedBankDetails = await uploadRewardSupportingFile(
           rewardBankDetailsFile,
           "reward-bank-details",
           "refund_rib_pdf",
+        );
+      }
+
+      if (requiresPurchaseProof && rewardPurchaseProofFile) {
+        uploadedPurchaseProof = await uploadRewardSupportingFile(
+          rewardPurchaseProofFile,
+          "reward-invoices",
+          "purchase_proof",
         );
       }
 
@@ -628,9 +659,11 @@ export default function App() {
         warranty_confirmed: isWarrantyReward
           ? rewardForm.warrantyConfirmed
           : false,
-        supporting_documents: [uploadedInvoice, uploadedBankDetails].filter(
-          Boolean,
-        ),
+        supporting_documents: [
+          uploadedInvoice,
+          uploadedBankDetails,
+          uploadedPurchaseProof,
+        ].filter(Boolean),
       };
 
       const { data: insertedRedemption, error } = await supabase
@@ -1313,19 +1346,53 @@ export default function App() {
 
             {selectedReward.type === "refund" ? (
               <div className="refund-fields">
-                <div
-                  style={{
-                    marginTop: "12px",
-                    padding: "12px",
-                    borderRadius: "10px",
-                    background: "#f8f9fb",
-                    color: "#475467",
-                    fontSize: "14px",
-                  }}
-                >
-                  Merci de transmettre votre RIB en version PDF, généré par la
-                  banque et au nom du titulaire du compte à rembourser.
-                </div>
+                {selectedReward.code === "refund_kristal_shine" ? (
+                  <div
+                    style={{
+                      marginTop: "12px",
+                      padding: "12px",
+                      borderRadius: "10px",
+                      background: "#f8f9fb",
+                      color: "#475467",
+                      fontSize: "14px",
+                    }}
+                  >
+                    Cette offre est valable uniquement si vous avez acheté un
+                    bidon de Kristal Shine de la marque Qlima. Vous devez
+                    fournir votre RIB ainsi que le ticket de caisse ou la
+                    facture prouvant l’achat de ce bidon.
+                  </div>
+                ) : selectedReward.code === "refund_50_appliance" ? (
+                  <div
+                    style={{
+                      marginTop: "12px",
+                      padding: "12px",
+                      borderRadius: "10px",
+                      background: "#f8f9fb",
+                      color: "#475467",
+                      fontSize: "14px",
+                    }}
+                  >
+                    Cette offre est valable uniquement si vous avez acheté un
+                    appareil à combustible liquide Qlima. Vous devez fournir
+                    votre RIB ainsi que le ticket de caisse ou la facture
+                    prouvant l’achat de cet appareil.
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      marginTop: "12px",
+                      padding: "12px",
+                      borderRadius: "10px",
+                      background: "#f8f9fb",
+                      color: "#475467",
+                      fontSize: "14px",
+                    }}
+                  >
+                    Merci de transmettre votre RIB en version PDF, généré par
+                    la banque et au nom du titulaire du compte à rembourser.
+                  </div>
+                )}
 
                 <div className="form-block">
                   <label>RIB bancaire en PDF</label>
@@ -1350,6 +1417,42 @@ export default function App() {
                     jusqu’à 6 semaines.
                   </p>
                 </div>
+
+                {selectedReward.code === "refund_kristal_shine" ? (
+                  <div className="form-block">
+                    <label>
+                      Ticket de caisse ou facture d’achat du bidon de Kristal
+                      Shine
+                    </label>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={handleRewardPurchaseProofFileChange}
+                    />
+                    {rewardPurchaseProofFile ? (
+                      <p className="muted" style={{ marginTop: "8px" }}>
+                        Fichier sélectionné : {rewardPurchaseProofFile.name}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : selectedReward.code === "refund_50_appliance" ? (
+                  <div className="form-block">
+                    <label>
+                      Ticket de caisse ou facture d’achat de l’appareil à
+                      combustible liquide Qlima
+                    </label>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={handleRewardPurchaseProofFileChange}
+                    />
+                    {rewardPurchaseProofFile ? (
+                      <p className="muted" style={{ marginTop: "8px" }}>
+                        Fichier sélectionné : {rewardPurchaseProofFile.name}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
