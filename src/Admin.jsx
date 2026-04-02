@@ -1,5 +1,103 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./lib/supabase";
+
+const STORAGE_BUCKET = "loyalty-documents";
+
+const sectionTabs = [
+  { key: "submissions", label: "Dossiers clients" },
+  { key: "rewards", label: "Récompenses" },
+];
+
+const submissionTabs = [
+  { key: "pending", label: "En cours" },
+  { key: "needs_info", label: "À compléter" },
+  { key: "validated", label: "Validées" },
+  { key: "rejected", label: "Refusées" },
+];
+
+const rewardTabs = [
+  { key: "pending", label: "En attente" },
+  { key: "approved", label: "Traitées" },
+  { key: "rejected", label: "Refusées" },
+  { key: "cancelled", label: "Annulées" },
+];
+
+const safeJsonParse = (value) => {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+};
+
+const normalizeDocuments = (rawValue) => {
+  if (!rawValue) return [];
+
+  let documents = rawValue;
+
+  if (typeof documents === "string") {
+    const parsed = safeJsonParse(documents);
+    documents = parsed ?? [];
+  }
+
+  if (documents && typeof documents === "object" && !Array.isArray(documents)) {
+    if (Array.isArray(documents.documents)) {
+      documents = documents.documents;
+    } else {
+      documents = [documents];
+    }
+  }
+
+  if (!Array.isArray(documents)) return [];
+
+  return documents
+    .map((doc, index) => {
+      if (!doc) return null;
+
+      if (typeof doc === "string") {
+        const parsed = safeJsonParse(doc);
+        if (parsed && typeof parsed === "object") {
+          doc = parsed;
+        } else {
+          return {
+            key: `${doc}-${index}`,
+            file_name: doc,
+            file_path: "",
+            url: "",
+            bucket: STORAGE_BUCKET,
+          };
+        }
+      }
+
+      const filePath =
+        doc.file_path ||
+        doc.path ||
+        doc.storage_path ||
+        doc.fullPath ||
+        doc.name ||
+        "";
+
+      const fileName =
+        doc.file_name ||
+        doc.filename ||
+        doc.name ||
+        (typeof filePath === "string" && filePath.includes("/")
+          ? filePath.split("/").pop()
+          : filePath) ||
+        `Document ${index + 1}`;
+
+      return {
+        key: `${filePath || fileName}-${index}`,
+        file_name: fileName,
+        file_path: filePath,
+        url: doc.url || doc.publicUrl || doc.signedUrl || "",
+        bucket: doc.storage_bucket || doc.bucket || STORAGE_BUCKET,
+        mime_type: doc.mime_type || doc.type || "",
+        document_kind: doc.document_kind || doc.kind || "",
+      };
+    })
+    .filter(Boolean);
+};
 
 export default function Admin({ session, onBack }) {
   const [submissions, setSubmissions] = useState([]);
@@ -7,9 +105,13 @@ export default function Admin({ session, onBack }) {
   const [message, setMessage] = useState("");
   const [adminMessages, setAdminMessages] = useState({});
   const [activeTab, setActiveTab] = useState("pending");
+  const [rewardTab, setRewardTab] = useState("pending");
+  const [sectionTab, setSectionTab] = useState("submissions");
   const [searchTerm, setSearchTerm] = useState("");
   const [rewardRedemptions, setRewardRedemptions] = useState([]);
   const [rewardMessage, setRewardMessage] = useState("");
+  const [documentUrls, setDocumentUrls] = useState({});
+  const [loadingDocumentKey, setLoadingDocumentKey] = useState("");
 
   useEffect(() => {
     fetchAllSubmissions();
@@ -63,6 +165,49 @@ export default function Admin({ session, onBack }) {
     }
 
     setLoading(false);
+  };
+
+  const openDocument = async (document) => {
+    if (!document) return;
+
+    const directUrl = document.url;
+    if (directUrl) {
+      window.open(directUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    const cacheKey = `${document.bucket || STORAGE_BUCKET}:${document.file_path}`;
+    if (documentUrls[cacheKey]) {
+      window.open(documentUrls[cacheKey], "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    if (!document.file_path) {
+      setMessage("Impossible d’ouvrir ce document : chemin manquant.");
+      return;
+    }
+
+    setLoadingDocumentKey(cacheKey);
+
+    const { data, error } = await supabase.storage
+      .from(document.bucket || STORAGE_BUCKET)
+      .createSignedUrl(document.file_path, 60 * 10);
+
+    setLoadingDocumentKey("");
+
+    if (error) {
+      console.error("Erreur génération URL document :", error);
+      setMessage("Impossible d’ouvrir le document.");
+      return;
+    }
+
+    if (data?.signedUrl) {
+      setDocumentUrls((prev) => ({
+        ...prev,
+        [cacheKey]: data.signedUrl,
+      }));
+      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    }
   };
 
   const getStatusLabel = (status) => {
@@ -197,6 +342,68 @@ export default function Admin({ session, onBack }) {
     );
   });
 
+  const rewardCounts = useMemo(
+    () => ({
+      pending: rewardRedemptions.filter((item) => item.status === "pending")
+        .length,
+      approved: rewardRedemptions.filter((item) => item.status === "approved")
+        .length,
+      rejected: rewardRedemptions.filter((item) => item.status === "rejected")
+        .length,
+      cancelled: rewardRedemptions.filter((item) => item.status === "cancelled")
+        .length,
+    }),
+    [rewardRedemptions],
+  );
+
+  const visibleRewards = rewardRedemptions.filter((item) => {
+    if (rewardTab === "approved") return item.status === "approved";
+    if (rewardTab === "rejected") return item.status === "rejected";
+    if (rewardTab === "cancelled") return item.status === "cancelled";
+    return item.status === "pending";
+  });
+
+  const filteredRewards = visibleRewards.filter((item) => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return true;
+
+    return (
+      item.reward_title?.toLowerCase().includes(term) ||
+      item.first_name?.toLowerCase().includes(term) ||
+      item.last_name?.toLowerCase().includes(term) ||
+      item.email?.toLowerCase().includes(term)
+    );
+  });
+
+  const renderDocuments = (documents, emptyLabel = "Aucun document") => {
+    const normalized = normalizeDocuments(documents);
+
+    if (normalized.length === 0) {
+      return <p className="muted">{emptyLabel}</p>;
+    }
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        {normalized.map((doc) => {
+          const cacheKey = `${doc.bucket || STORAGE_BUCKET}:${doc.file_path}`;
+          const isOpening = loadingDocumentKey === cacheKey;
+
+          return (
+            <button
+              key={doc.key}
+              type="button"
+              className="btn btn-secondary"
+              style={{ width: "fit-content" }}
+              onClick={() => openDocument(doc)}
+            >
+              {isOpening ? "Ouverture..." : `Voir ${doc.file_name}`}
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
   if (loading) {
     return <div className="center-screen">Chargement...</div>;
   }
@@ -227,339 +434,411 @@ export default function Admin({ session, onBack }) {
         <section className="left-column" style={{ gridColumn: "1 / -1" }}>
           <div className="panel soft-panel">
             <div className="section-shape">
-              <h2>Administration des demandes</h2>
+              <h2>Pilotage admin</h2>
               <p>
-                Gérez les dossiers clients, les validations et les demandes de
-                complément.
+                Retrouvez les dossiers clients et les demandes de récompenses
+                dans des espaces séparés.
               </p>
-            </div>
-
-            {message ? <p className="muted">{message}</p> : null}
-
-            <div className="form-block">
-              <label>Rechercher un client</label>
-              <input
-                type="text"
-                placeholder="Nom, prénom ou e-mail"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
             </div>
 
             <div
               className="auth-buttons"
               style={{ flexWrap: "wrap", marginTop: "20px" }}
             >
-              <button
-                className={`btn ${
-                  activeTab === "pending" ? "btn-primary" : "btn-secondary"
-                }`}
-                onClick={() => setActiveTab("pending")}
-              >
-                En cours ({pendingSubmissions.length})
-              </button>
+              {sectionTabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  className={`btn ${sectionTab === tab.key ? "btn-primary" : "btn-secondary"}`}
+                  onClick={() => setSectionTab(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
 
-              <button
-                className={`btn ${
-                  activeTab === "needs_info" ? "btn-primary" : "btn-secondary"
-                }`}
-                onClick={() => setActiveTab("needs_info")}
-              >
-                À compléter ({needsInfoSubmissions.length})
-              </button>
-
-              <button
-                className={`btn ${
-                  activeTab === "validated" ? "btn-primary" : "btn-secondary"
-                }`}
-                onClick={() => setActiveTab("validated")}
-              >
-                Validées ({validatedSubmissions.length})
-              </button>
-
-              <button
-                className={`btn ${
-                  activeTab === "rejected" ? "btn-primary" : "btn-secondary"
-                }`}
-                onClick={() => setActiveTab("rejected")}
-              >
-                Refusées ({rejectedSubmissions.length})
-              </button>
+            <div className="form-block" style={{ marginTop: "20px" }}>
+              <label>Rechercher</label>
+              <input
+                type="text"
+                placeholder={
+                  sectionTab === "submissions"
+                    ? "Nom, prénom ou e-mail"
+                    : "Récompense, nom ou e-mail"
+                }
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
             </div>
           </div>
 
-          {filteredSubmissions.length === 0 ? (
-            <div className="panel">
-              <p className="muted">Aucune demande dans cet onglet.</p>
-            </div>
-          ) : (
-            filteredSubmissions.map((submission) => (
-              <div
-                key={submission.id}
-                className="panel"
-                style={{ marginTop: "20px" }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: "16px",
-                    flexWrap: "wrap",
-                    alignItems: "flex-start",
-                  }}
-                >
-                  <div>
-                    <h2 style={{ marginBottom: "8px" }}>
-                      {submission.first_name} {submission.last_name}
-                    </h2>
-                    <p className="muted" style={{ marginTop: 0 }}>
-                      {submission.email}
-                    </p>
-                  </div>
-
-                  <span className={getStatusClass(submission.status)}>
-                    {getStatusLabel(submission.status)}
-                  </span>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                    gap: "12px",
-                    marginTop: "20px",
-                  }}
-                >
-                  <div className="stat-box">
-                    <span>Produit</span>
-                    <strong style={{ fontSize: "20px" }}>
-                      {submission.fuel || "—"}
-                    </strong>
-                  </div>
-
-                  <div className="stat-box">
-                    <span>Quantité</span>
-                    <strong style={{ fontSize: "20px" }}>
-                      {submission.quantity || 0}
-                    </strong>
-                  </div>
-
-                  <div className="stat-box">
-                    <span>Points estimés</span>
-                    <strong style={{ fontSize: "20px" }}>
-                      {submission.estimated_points || 0}
-                    </strong>
-                  </div>
-
-                  <div className="stat-box">
-                    <span>Points attribués</span>
-                    <strong style={{ fontSize: "20px" }}>
-                      {submission.points_awarded || 0}
-                    </strong>
-                  </div>
-                </div>
-
-                <div style={{ marginTop: "20px" }}>
-                  <p className="muted" style={{ marginBottom: "6px" }}>
-                    <strong>Téléphone :</strong> {submission.phone || "—"}
+          {sectionTab === "submissions" ? (
+            <>
+              <div className="panel" style={{ marginTop: "20px" }}>
+                <div className="section-shape">
+                  <h2>Dossiers clients</h2>
+                  <p>
+                    Chaque dossier affiche maintenant les pièces jointes
+                    envoyées par le client pour la validation des points.
                   </p>
-                  <p className="muted" style={{ marginBottom: "6px" }}>
-                    <strong>Adresse :</strong> {submission.address || "—"}
-                  </p>
-                  <p className="muted" style={{ marginBottom: "6px" }}>
-                    <strong>Date :</strong>{" "}
-                    {submission.created_at
-                      ? new Date(submission.created_at).toLocaleString("fr-FR")
-                      : "—"}
-                  </p>
-                  {submission.comments ? (
-                    <p className="muted" style={{ marginBottom: "6px" }}>
-                      <strong>Commentaire client :</strong>{" "}
-                      {submission.comments}
-                    </p>
-                  ) : null}
                 </div>
 
-                <div className="form-block" style={{ marginTop: "20px" }}>
-                  <label>Message au client</label>
-                  <textarea
-                    rows="4"
-                    placeholder="Ajouter un message visible par le client"
-                    value={
-                      adminMessages[submission.id] ??
-                      submission.admin_message ??
-                      ""
-                    }
-                    onChange={(e) =>
-                      setAdminMessages((prev) => ({
-                        ...prev,
-                        [submission.id]: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
+                {message ? <p className="muted">{message}</p> : null}
 
                 <div
                   className="auth-buttons"
                   style={{ flexWrap: "wrap", marginTop: "20px" }}
                 >
-                  <button
-                    className="btn btn-primary"
-                    onClick={() =>
-                      updateSubmissionStatus(submission, "validated")
-                    }
-                  >
-                    Validation rapide
-                  </button>
+                  {submissionTabs.map((tab) => {
+                    const count =
+                      tab.key === "pending"
+                        ? pendingSubmissions.length
+                        : tab.key === "needs_info"
+                          ? needsInfoSubmissions.length
+                          : tab.key === "validated"
+                            ? validatedSubmissions.length
+                            : rejectedSubmissions.length;
 
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() =>
-                      updateSubmissionStatus(submission, "needs_info")
-                    }
-                  >
-                    Demander un complément
-                  </button>
-
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() =>
-                      updateSubmissionStatus(submission, "rejected")
-                    }
-                  >
-                    Refuser
-                  </button>
+                    return (
+                      <button
+                        key={tab.key}
+                        className={`btn ${activeTab === tab.key ? "btn-primary" : "btn-secondary"}`}
+                        onClick={() => setActiveTab(tab.key)}
+                      >
+                        {tab.label} ({count})
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-            ))
-          )}
 
-          <div className="panel" style={{ marginTop: "20px" }}>
-            <div className="section-shape">
-              <h2>Demandes de récompenses</h2>
-              <p>
-                Consultez les récompenses demandées par les clients et mettez à
-                jour leur statut.
-              </p>
-            </div>
-
-            {rewardMessage ? <p className="muted">{rewardMessage}</p> : null}
-
-            {rewardRedemptions.length === 0 ? (
-              <p className="muted">
-                Aucune demande de récompense pour le moment.
-              </p>
-            ) : (
-              rewardRedemptions.map((item) => (
-                <div
-                  key={item.id}
-                  className="panel"
-                  style={{
-                    marginTop: "20px",
-                    padding: "20px",
-                    background: "#fff",
-                  }}
-                >
+              {filteredSubmissions.length === 0 ? (
+                <div className="panel" style={{ marginTop: "20px" }}>
+                  <p className="muted">Aucune demande dans cet onglet.</p>
+                </div>
+              ) : (
+                filteredSubmissions.map((submission) => (
                   <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: "16px",
-                      flexWrap: "wrap",
-                      alignItems: "flex-start",
-                    }}
+                    key={submission.id}
+                    className="panel"
+                    style={{ marginTop: "20px" }}
                   >
-                    <div>
-                      <h2 style={{ marginBottom: "8px" }}>
-                        {item.reward_title}
-                      </h2>
-                      <p className="muted" style={{ marginTop: 0 }}>
-                        {item.first_name} {item.last_name}
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: "16px",
+                        flexWrap: "wrap",
+                        alignItems: "flex-start",
+                      }}
+                    >
+                      <div>
+                        <h2 style={{ marginBottom: "8px" }}>
+                          {submission.first_name} {submission.last_name}
+                        </h2>
+                        <p className="muted" style={{ marginTop: 0 }}>
+                          {submission.email}
+                        </p>
+                      </div>
+
+                      <span className={getStatusClass(submission.status)}>
+                        {getStatusLabel(submission.status)}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          "repeat(auto-fit, minmax(220px, 1fr))",
+                        gap: "12px",
+                        marginTop: "20px",
+                      }}
+                    >
+                      <div className="stat-box">
+                        <span>Produit</span>
+                        <strong style={{ fontSize: "20px" }}>
+                          {submission.fuel || "—"}
+                        </strong>
+                      </div>
+
+                      <div className="stat-box">
+                        <span>Quantité</span>
+                        <strong style={{ fontSize: "20px" }}>
+                          {submission.quantity || 0}
+                        </strong>
+                      </div>
+
+                      <div className="stat-box">
+                        <span>Points estimés</span>
+                        <strong style={{ fontSize: "20px" }}>
+                          {submission.estimated_points || 0}
+                        </strong>
+                      </div>
+
+                      <div className="stat-box">
+                        <span>Points attribués</span>
+                        <strong style={{ fontSize: "20px" }}>
+                          {submission.points_awarded || 0}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: "20px" }}>
+                      <p className="muted" style={{ marginBottom: "6px" }}>
+                        <strong>Téléphone :</strong> {submission.phone || "—"}
                       </p>
-                      <p className="muted" style={{ marginTop: 0 }}>
-                        {item.email}
+                      <p className="muted" style={{ marginBottom: "6px" }}>
+                        <strong>Adresse :</strong> {submission.address || "—"}
                       </p>
-                    </div>
-
-                    <span className={getRewardStatusClass(item.status)}>
-                      {getRewardStatusLabel(item.status)}
-                    </span>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns:
-                        "repeat(auto-fit, minmax(220px, 1fr))",
-                      gap: "12px",
-                      marginTop: "20px",
-                    }}
-                  >
-                    <div className="stat-box">
-                      <span>Type</span>
-                      <strong style={{ fontSize: "20px" }}>
-                        {item.reward_type === "refund"
-                          ? "Remboursement"
-                          : "Récompense"}
-                      </strong>
-                    </div>
-
-                    <div className="stat-box">
-                      <span>Points utilisés</span>
-                      <strong style={{ fontSize: "20px" }}>
-                        {item.points_used || 0}
-                      </strong>
-                    </div>
-
-                    <div className="stat-box">
-                      <span>Date de demande</span>
-                      <strong style={{ fontSize: "20px" }}>
-                        {item.created_at
-                          ? new Date(item.created_at).toLocaleDateString(
+                      <p className="muted" style={{ marginBottom: "6px" }}>
+                        <strong>Date :</strong>{" "}
+                        {submission.created_at
+                          ? new Date(submission.created_at).toLocaleString(
                               "fr-FR",
                             )
                           : "—"}
-                      </strong>
+                      </p>
+                      {submission.comments ? (
+                        <p className="muted" style={{ marginBottom: "6px" }}>
+                          <strong>Commentaire client :</strong>{" "}
+                          {submission.comments}
+                        </p>
+                      ) : null}
                     </div>
-                  </div>
 
-                  {item.reward_type === "refund" ? (
                     <div style={{ marginTop: "20px" }}>
-                      <p className="muted" style={{ marginBottom: "6px" }}>
-                        <strong>RIB :</strong> {item.rib || "Non renseigné"}
+                      <p className="muted" style={{ marginBottom: "10px" }}>
+                        <strong>Pièces jointes client :</strong>
                       </p>
-                      <p className="muted" style={{ marginBottom: "6px" }}>
-                        <strong>IBAN :</strong> {item.iban || "Non renseigné"}
-                      </p>
-                      <p className="muted" style={{ marginBottom: "6px" }}>
-                        <strong>Titulaire :</strong>{" "}
-                        {item.bank_account_holder || "Non renseigné"}
-                      </p>
+                      {renderDocuments(
+                        submission.documents,
+                        "Aucune pièce jointe transmise",
+                      )}
                     </div>
-                  ) : null}
 
-                  <div
-                    className="auth-buttons"
-                    style={{ flexWrap: "wrap", marginTop: "20px" }}
-                  >
-                    <button
-                      className="btn btn-primary"
-                      onClick={() => updateRewardStatus(item.id, "approved")}
-                    >
-                      Valider
-                    </button>
+                    <div className="form-block" style={{ marginTop: "20px" }}>
+                      <label>Message au client</label>
+                      <textarea
+                        rows="4"
+                        placeholder="Ajouter un message visible par le client"
+                        value={
+                          adminMessages[submission.id] ??
+                          submission.admin_message ??
+                          ""
+                        }
+                        onChange={(e) =>
+                          setAdminMessages((prev) => ({
+                            ...prev,
+                            [submission.id]: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
 
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => updateRewardStatus(item.id, "rejected")}
+                    <div
+                      className="auth-buttons"
+                      style={{ flexWrap: "wrap", marginTop: "20px" }}
                     >
-                      Refuser
-                    </button>
+                      <button
+                        className="btn btn-primary"
+                        onClick={() =>
+                          updateSubmissionStatus(submission, "validated")
+                        }
+                      >
+                        Validation rapide
+                      </button>
+
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() =>
+                          updateSubmissionStatus(submission, "needs_info")
+                        }
+                      >
+                        Demander un complément
+                      </button>
+
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() =>
+                          updateSubmissionStatus(submission, "rejected")
+                        }
+                      >
+                        Refuser
+                      </button>
+                    </div>
                   </div>
+                ))
+              )}
+            </>
+          ) : (
+            <>
+              <div className="panel" style={{ marginTop: "20px" }}>
+                <div className="section-shape">
+                  <h2>Récompenses</h2>
+                  <p>
+                    Les demandes de récompenses sont regroupées à part pour
+                    éviter de mélanger les validations de points et les
+                    avantages clients.
+                  </p>
                 </div>
-              ))
-            )}
-          </div>
+
+                {rewardMessage ? (
+                  <p className="muted">{rewardMessage}</p>
+                ) : null}
+
+                <div
+                  className="auth-buttons"
+                  style={{ flexWrap: "wrap", marginTop: "20px" }}
+                >
+                  {rewardTabs.map((tab) => (
+                    <button
+                      key={tab.key}
+                      className={`btn ${rewardTab === tab.key ? "btn-primary" : "btn-secondary"}`}
+                      onClick={() => setRewardTab(tab.key)}
+                    >
+                      {tab.label} ({rewardCounts[tab.key] || 0})
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {filteredRewards.length === 0 ? (
+                <div className="panel" style={{ marginTop: "20px" }}>
+                  <p className="muted">
+                    Aucune demande de récompense dans cet onglet.
+                  </p>
+                </div>
+              ) : (
+                filteredRewards.map((item) => (
+                  <div
+                    key={item.id}
+                    className="panel"
+                    style={{
+                      marginTop: "20px",
+                      padding: "20px",
+                      background: "#fff",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: "16px",
+                        flexWrap: "wrap",
+                        alignItems: "flex-start",
+                      }}
+                    >
+                      <div>
+                        <h2 style={{ marginBottom: "8px" }}>
+                          {item.reward_title}
+                        </h2>
+                        <p className="muted" style={{ marginTop: 0 }}>
+                          {item.first_name} {item.last_name}
+                        </p>
+                        <p className="muted" style={{ marginTop: 0 }}>
+                          {item.email}
+                        </p>
+                      </div>
+
+                      <span className={getRewardStatusClass(item.status)}>
+                        {getRewardStatusLabel(item.status)}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          "repeat(auto-fit, minmax(220px, 1fr))",
+                        gap: "12px",
+                        marginTop: "20px",
+                      }}
+                    >
+                      <div className="stat-box">
+                        <span>Type</span>
+                        <strong style={{ fontSize: "20px" }}>
+                          {item.reward_type === "refund"
+                            ? "Remboursement"
+                            : "Récompense"}
+                        </strong>
+                      </div>
+
+                      <div className="stat-box">
+                        <span>Points utilisés</span>
+                        <strong style={{ fontSize: "20px" }}>
+                          {item.points_used || 0}
+                        </strong>
+                      </div>
+
+                      <div className="stat-box">
+                        <span>Date de demande</span>
+                        <strong style={{ fontSize: "20px" }}>
+                          {item.created_at
+                            ? new Date(item.created_at).toLocaleDateString(
+                                "fr-FR",
+                              )
+                            : "—"}
+                        </strong>
+                      </div>
+                    </div>
+
+                    {item.reward_type === "refund" ? (
+                      <div style={{ marginTop: "20px" }}>
+                        <p className="muted" style={{ marginBottom: "10px" }}>
+                          <strong>RIB PDF :</strong>
+                        </p>
+                        {renderDocuments(
+                          item.supporting_documents,
+                          "Aucun document",
+                        )}
+                      </div>
+                    ) : null}
+
+                    {item.reward_code === "extended_warranty_1y" ? (
+                      <div style={{ marginTop: "20px" }}>
+                        <p className="muted" style={{ marginBottom: "6px" }}>
+                          <strong>Numéro de série :</strong>{" "}
+                          {item.serial_number || "Non renseigné"}
+                        </p>
+                        <p className="muted" style={{ marginBottom: "6px" }}>
+                          <strong>Appareil encore sous garantie :</strong>{" "}
+                          {item.warranty_confirmed ? "Oui" : "Non"}
+                        </p>
+                        <div style={{ marginTop: "10px" }}>
+                          <p className="muted" style={{ marginBottom: "10px" }}>
+                            <strong>Facture :</strong>
+                          </p>
+                          {renderDocuments(
+                            item.supporting_documents,
+                            "Aucun document",
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div
+                      className="auth-buttons"
+                      style={{ flexWrap: "wrap", marginTop: "20px" }}
+                    >
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => updateRewardStatus(item.id, "approved")}
+                      >
+                        Valider
+                      </button>
+
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => updateRewardStatus(item.id, "rejected")}
+                      >
+                        Refuser
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </>
+          )}
         </section>
       </main>
     </div>

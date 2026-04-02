@@ -13,29 +13,44 @@ const fuels = [
 
 const rewards = [
   {
+    code: "extended_warranty_1y",
     points: 10,
     title: "1 an de garantie supplémentaire",
     type: "standard",
   },
-  { points: 15, title: "12€ remboursés", type: "refund" },
   {
+    code: "refund_12",
+    points: 15,
+    title: "12€ remboursés",
+    type: "refund",
+  },
+  {
+    code: "electric_pump",
     points: 20,
     title: "Pompe à combustible liquide électrique Qlima offerte",
     type: "standard",
   },
   {
+    code: "refund_50_appliance",
     points: 40,
     title:
       "50€ remboursés sur l'achat d'un appareil à combustible liquide Qlima",
     type: "refund",
   },
-  { points: 60, title: "Un bidon de Kristal Shine remboursé", type: "refund" },
   {
+    code: "refund_kristal_shine",
+    points: 60,
+    title: "Un bidon de Kristal Shine remboursé",
+    type: "refund",
+  },
+  {
+    code: "sre_4035_c",
     points: 80,
     title: "Un poêle à combustible liquide SRE 4035 C offert",
     type: "standard",
   },
   {
+    code: "sre_9046_c2",
     points: 100,
     title: "Un poêle à combustible liquide SRE 9046 C-2 offert",
     type: "standard",
@@ -54,10 +69,11 @@ export default function App() {
   const [rewardModalOpen, setRewardModalOpen] = useState(false);
   const [rewardModalMessage, setRewardModalMessage] = useState("");
   const [rewardForm, setRewardForm] = useState({
-    rib: "",
-    iban: "",
-    accountHolder: "",
+    serialNumber: "",
+    warrantyConfirmed: false,
   });
+  const [rewardInvoiceFile, setRewardInvoiceFile] = useState(null);
+  const [rewardBankDetailsFile, setRewardBankDetailsFile] = useState(null);
   const [isSubmittingReward, setIsSubmittingReward] = useState(false);
 
   const [authForm, setAuthForm] = useState({
@@ -136,6 +152,7 @@ export default function App() {
     : 100;
 
   const latestRedemption = rewardRedemptions[0] || null;
+  const isWarrantyReward = selectedReward?.code === "extended_warranty_1y";
 
   const handleAuthChange = (field, value) => {
     setAuthForm((prev) => ({ ...prev, [field]: value }));
@@ -203,11 +220,28 @@ export default function App() {
     setRewardForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  const handleRewardInvoiceFileChange = (e) => {
+    const file = e.target.files?.[0] || null;
+    setRewardInvoiceFile(file);
+  };
+
+  const handleRewardBankDetailsFileChange = (e) => {
+    const file = e.target.files?.[0] || null;
+    setRewardBankDetailsFile(file);
+  };
+
   const openRewardModal = (reward) => {
     setSelectedReward(reward);
     setRewardModalOpen(true);
     setMessage("");
     setRewardModalMessage("");
+    setRewardForm({
+      serialNumber: "",
+      warrantyConfirmed: false,
+    });
+    setRewardInvoiceFile(null);
+    setRewardBankDetailsFile(null);
+    setRewardBankDetailsFile(null);
   };
 
   const closeRewardModal = () => {
@@ -215,10 +249,12 @@ export default function App() {
     setSelectedReward("");
     setRewardModalMessage("");
     setRewardForm({
-      rib: "",
-      iban: "",
-      accountHolder: "",
+      serialNumber: "",
+      warrantyConfirmed: false,
     });
+    setRewardInvoiceFile(null);
+    setRewardBankDetailsFile(null);
+    setRewardBankDetailsFile(null);
   };
 
   const signUp = async (e) => {
@@ -337,6 +373,8 @@ export default function App() {
     setRewardRedemptions([]);
     setRewardModalOpen(false);
     setRewardModalMessage("");
+    setRewardInvoiceFile(null);
+    setRewardBankDetailsFile(null);
   };
 
   const fetchSubmissions = async () => {
@@ -397,6 +435,35 @@ export default function App() {
     }
 
     return uploaded;
+  };
+
+  const uploadRewardSupportingFile = async (file, folder, documentKind) => {
+    if (!session?.user || !file) return null;
+
+    const extension = file.name.split(".").pop();
+    const uniqueName = `${session.user.id}/${folder}/${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2)}.${extension}`;
+
+    const { error } = await supabase.storage
+      .from("loyalty-documents")
+      .upload(uniqueName, file, {
+        contentType: file.type || undefined,
+        upsert: false,
+      });
+
+    if (error) throw error;
+
+    return {
+      file_name: file.name,
+      file_path: uniqueName,
+      path: uniqueName,
+      storage_path: uniqueName,
+      storage_bucket: "loyalty-documents",
+      mime_type: file.type || null,
+      document_kind: documentKind || null,
+      uploaded_at: new Date().toISOString(),
+    };
   };
 
   const handleSubmitPurchase = async (e) => {
@@ -476,17 +543,46 @@ export default function App() {
     if (!session?.user || !selectedReward) return;
 
     const isRefundReward = selectedReward.type === "refund";
+    const isWarrantyReward = selectedReward.code === "extended_warranty_1y";
 
-    if (
-      isRefundReward &&
-      (!rewardForm.rib.trim() ||
-        !rewardForm.iban.trim() ||
-        !rewardForm.accountHolder.trim())
-    ) {
-      setRewardModalMessage(
-        "Merci de renseigner le RIB, l’IBAN et le nom du titulaire du compte bancaire.",
-      );
-      return;
+    if (isRefundReward) {
+      if (!rewardBankDetailsFile) {
+        setRewardModalMessage(
+          "Merci d’ajouter votre RIB en format PDF, généré par la banque, au nom du titulaire du compte.",
+        );
+        return;
+      }
+
+      const fileName = rewardBankDetailsFile.name?.toLowerCase() || "";
+      if (!fileName.endsWith(".pdf")) {
+        setRewardModalMessage(
+          "Le RIB doit être transmis en format PDF uniquement.",
+        );
+        return;
+      }
+    }
+
+    if (isWarrantyReward) {
+      if (!rewardInvoiceFile) {
+        setRewardModalMessage(
+          "Merci d’ajouter la facture d’achat de l’appareil faisant figurer la date d’achat.",
+        );
+        return;
+      }
+
+      if (!rewardForm.serialNumber.trim()) {
+        setRewardModalMessage(
+          "Merci de renseigner le numéro de série de l’appareil à combustible liquide.",
+        );
+        return;
+      }
+
+      if (!rewardForm.warrantyConfirmed) {
+        setRewardModalMessage(
+          "Cette récompense est réservée aux appareils toujours sous garantie. Merci de confirmer cette information.",
+        );
+        return;
+      }
     }
 
     setMessage("");
@@ -494,6 +590,25 @@ export default function App() {
     setIsSubmittingReward(true);
 
     try {
+      let uploadedInvoice = null;
+      let uploadedBankDetails = null;
+
+      if (isWarrantyReward) {
+        uploadedInvoice = await uploadRewardSupportingFile(
+          rewardInvoiceFile,
+          "reward-invoices",
+          "warranty_invoice",
+        );
+      }
+
+      if (isRefundReward) {
+        uploadedBankDetails = await uploadRewardSupportingFile(
+          rewardBankDetailsFile,
+          "reward-bank-details",
+          "refund_rib_pdf",
+        );
+      }
+
       const redemptionPayload = {
         user_id: session.user.id,
         first_name:
@@ -501,15 +616,21 @@ export default function App() {
         last_name:
           session.user.user_metadata?.last_name || authForm.lastName || "",
         email: session.user.email,
+        reward_code: selectedReward.code,
         reward_title: selectedReward.title,
         reward_type: selectedReward.type,
         points_used: selectedReward.points,
         status: "pending",
-        rib: isRefundReward ? rewardForm.rib.trim() : null,
-        iban: isRefundReward ? rewardForm.iban.trim() : null,
-        bank_account_holder: isRefundReward
-          ? rewardForm.accountHolder.trim()
-          : null,
+        rib: null,
+        iban: null,
+        bank_account_holder: null,
+        serial_number: isWarrantyReward ? rewardForm.serialNumber.trim() : null,
+        warranty_confirmed: isWarrantyReward
+          ? rewardForm.warrantyConfirmed
+          : false,
+        supporting_documents: [uploadedInvoice, uploadedBankDetails].filter(
+          Boolean,
+        ),
       };
 
       const { data: insertedRedemption, error } = await supabase
@@ -978,7 +1099,7 @@ export default function App() {
 
                 return (
                   <div
-                    key={reward.points}
+                    key={reward.code}
                     className={`reward-item ${available ? "available" : ""}`}
                   >
                     <div>
@@ -1119,42 +1240,115 @@ export default function App() {
               <strong>{selectedReward.title}</strong> ?
             </p>
 
+            {isWarrantyReward ? (
+              <div className="refund-fields">
+                <div
+                  style={{
+                    marginTop: "12px",
+                    padding: "12px",
+                    borderRadius: "10px",
+                    background: "#f8f9fb",
+                    color: "#475467",
+                    fontSize: "14px",
+                  }}
+                >
+                  Cette récompense est valable uniquement pour un appareil à
+                  combustible liquide Qlima toujours sous garantie.
+                </div>
+
+                <div className="form-block">
+                  <label>
+                    Facture d’achat de l’appareil (avec date d’achat)
+                  </label>
+                  <input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png"
+                    onChange={handleRewardInvoiceFileChange}
+                  />
+                  {rewardInvoiceFile ? (
+                    <p className="muted" style={{ marginTop: "8px" }}>
+                      Fichier sélectionné : {rewardInvoiceFile.name}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="form-block">
+                  <label>
+                    Numéro de série de l’appareil à combustible liquide
+                  </label>
+                  <input
+                    type="text"
+                    value={rewardForm.serialNumber}
+                    onChange={(e) =>
+                      handleRewardFormChange("serialNumber", e.target.value)
+                    }
+                    placeholder="Renseignez le numéro de série"
+                  />
+                </div>
+
+                <div
+                  className="form-block"
+                  style={{ display: "flex", alignItems: "center", gap: "10px" }}
+                >
+                  <input
+                    id="warrantyConfirmed"
+                    type="checkbox"
+                    checked={rewardForm.warrantyConfirmed}
+                    onChange={(e) =>
+                      handleRewardFormChange(
+                        "warrantyConfirmed",
+                        e.target.checked,
+                      )
+                    }
+                  />
+                  <label
+                    htmlFor="warrantyConfirmed"
+                    style={{ marginBottom: 0 }}
+                  >
+                    Je confirme que l’appareil est toujours sous garantie.
+                  </label>
+                </div>
+              </div>
+            ) : null}
+
             {selectedReward.type === "refund" ? (
               <div className="refund-fields">
-                <div className="form-block">
-                  <label>RIB</label>
-                  <input
-                    type="text"
-                    value={rewardForm.rib}
-                    onChange={(e) =>
-                      handleRewardFormChange("rib", e.target.value)
-                    }
-                    placeholder="Renseignez votre RIB"
-                  />
+                <div
+                  style={{
+                    marginTop: "12px",
+                    padding: "12px",
+                    borderRadius: "10px",
+                    background: "#f8f9fb",
+                    color: "#475467",
+                    fontSize: "14px",
+                  }}
+                >
+                  Merci de transmettre votre RIB en version PDF, généré par la
+                  banque et au nom du titulaire du compte à rembourser.
                 </div>
 
                 <div className="form-block">
-                  <label>IBAN</label>
+                  <label>RIB bancaire en PDF</label>
                   <input
-                    type="text"
-                    value={rewardForm.iban}
-                    onChange={(e) =>
-                      handleRewardFormChange("iban", e.target.value)
-                    }
-                    placeholder="Renseignez votre IBAN"
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    onChange={handleRewardBankDetailsFileChange}
                   />
-                </div>
-
-                <div className="form-block">
-                  <label>Nom du titulaire du compte</label>
-                  <input
-                    type="text"
-                    value={rewardForm.accountHolder}
-                    onChange={(e) =>
-                      handleRewardFormChange("accountHolder", e.target.value)
-                    }
-                    placeholder="Nom et prénom du titulaire"
-                  />
+                  {rewardBankDetailsFile ? (
+                    <p className="muted" style={{ marginTop: "8px" }}>
+                      Fichier sélectionné : {rewardBankDetailsFile.name}
+                    </p>
+                  ) : null}
+                  <p
+                    style={{
+                      marginTop: "12px",
+                      fontSize: "12px",
+                      color: "#98A2B3",
+                    }}
+                  >
+                    * Le délai de traitement du virement peut varier et aller
+                    jusqu’à 6 semaines.
+                  </p>
                 </div>
               </div>
             ) : null}
