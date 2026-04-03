@@ -6,9 +6,10 @@ const MAIL_FROM =
   Deno.env.get("MAIL_FROM") || "Qlima Premium Club <onboarding@resend.dev>";
 const MAIL_REPLY_TO = Deno.env.get("MAIL_REPLY_TO") || ADMIN_EMAIL;
 
-console.log("boot — RESEND_API_KEY présent :", !!RESEND_API_KEY);
-console.log("boot — ADMIN_EMAIL :", ADMIN_EMAIL);
-console.log("boot — MAIL_FROM :", MAIL_FROM);
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
 function escapeHtml(value: string) {
   return value
@@ -20,16 +21,15 @@ function escapeHtml(value: string) {
 }
 
 serve(async (req) => {
-  try {
-    if (req.method !== "POST") {
-      return new Response("Method Not Allowed", { status: 405 });
-    }
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
 
+  try {
     if (!RESEND_API_KEY) {
-      console.error("RESEND_API_KEY manquant !");
       return new Response(
         JSON.stringify({ error: "RESEND_API_KEY non configuré" }),
-        { status: 500, headers: { "Content-Type": "application/json" } },
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
@@ -53,8 +53,6 @@ serve(async (req) => {
       </div>
     `;
 
-    console.log("Envoi vers :", ADMIN_EMAIL);
-
     const resendResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -71,27 +69,24 @@ serve(async (req) => {
     });
 
     const resendData = await resendResponse.text();
-    console.log("Resend status :", resendResponse.status);
-    console.log("Resend body :", resendData);
 
     if (!resendResponse.ok) {
       return new Response(
         JSON.stringify({ error: "Erreur Resend", details: resendData }),
-        { status: 500, headers: { "Content-Type": "application/json" } },
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });
   } catch (error) {
-    console.error("Erreur :", error);
     return new Response(
       JSON.stringify({
         error: error instanceof Error ? error.message : "Erreur inconnue",
       }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
