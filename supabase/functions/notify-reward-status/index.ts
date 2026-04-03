@@ -19,9 +19,9 @@ serve(async (req) => {
       return new Response("Method Not Allowed", { status: 405 });
     }
 
-    const { submission } = await req.json();
+    const { redemption } = await req.json();
 
-    if (!submission?.email) {
+    if (!redemption?.email) {
       return new Response(
         JSON.stringify({ error: "Email du client manquant" }),
         { status: 400, headers: { "Content-Type": "application/json" } },
@@ -29,35 +29,31 @@ serve(async (req) => {
     }
 
     const fullName =
-      `${submission?.first_name || ""} ${submission?.last_name || ""}`.trim() ||
+      `${redemption?.first_name || ""} ${redemption?.last_name || ""}`.trim() ||
       "Client";
 
     const statusLabels: Record<string, string> = {
-      validated: "Validée ✅",
+      approved: "Validée ✅",
       rejected: "Refusée ❌",
-      needs_info: "Complément d'informations requis ℹ️",
+      cancelled: "Annulée",
       pending: "En attente",
     };
 
-    const statusLabel = statusLabels[submission?.status] ?? submission?.status;
+    const statusLabel = statusLabels[redemption?.status] ?? redemption?.status;
 
-    const adminMessageBlock = submission?.admin_message
-      ? `<p><strong>Message de notre équipe :</strong><br>${escapeHtml(submission.admin_message)}</p>`
-      : "";
-
-    const pointsBlock =
-      submission?.status === "validated" && submission?.points_awarded
-        ? `<p><strong>Points attribués :</strong> ${submission.points_awarded} points</p>`
+    const approvedBlock =
+      redemption?.status === "approved"
+        ? `<p>Votre récompense va être traitée dans les meilleurs délais. Si un virement est prévu, il peut prendre jusqu'à 6 semaines.</p>`
         : "";
 
     const html = `
       <div style="font-family: Arial, sans-serif; color: #101828; line-height: 1.6;">
-        <h2>Mise à jour de votre demande de points</h2>
+        <h2>Mise à jour de votre demande de récompense</h2>
         <p>Bonjour ${escapeHtml(fullName)},</p>
-        <p>Votre demande de validation de points a été mise à jour.</p>
+        <p>Votre demande de récompense a été mise à jour.</p>
+        <p><strong>Récompense :</strong> ${escapeHtml(redemption?.reward_title || "")}</p>
         <p><strong>Statut :</strong> ${escapeHtml(statusLabel)}</p>
-        ${pointsBlock}
-        ${adminMessageBlock}
+        ${approvedBlock}
         <p>Connectez-vous à votre espace fidélité pour consulter le détail.</p>
         <p>Cordialement,<br>L'équipe Qlima</p>
       </div>
@@ -71,8 +67,8 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         from: MAIL_FROM,
-        to: [submission.email],
-        subject: `Votre demande de points — ${statusLabel}`,
+        to: [redemption.email],
+        subject: `Votre récompense "${redemption?.reward_title || ""}" — ${statusLabel}`,
         html,
       }),
     });

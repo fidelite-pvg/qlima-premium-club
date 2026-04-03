@@ -132,18 +132,31 @@ export default function Admin({ session, onBack }) {
     setRewardRedemptions(data || []);
   };
 
-  const updateRewardStatus = async (id, status) => {
+  const updateRewardStatus = async (item, status) => {
     setRewardMessage("");
 
     const { error } = await supabase
       .from("reward_redemptions")
       .update({ status })
-      .eq("id", id);
+      .eq("id", item.id);
 
     if (error) {
       console.error("Erreur update reward status :", error);
       setRewardMessage("Erreur lors de la mise à jour du statut.");
       return;
+    }
+
+    const { error: notifyError } = await supabase.functions.invoke(
+      "notify-reward-status",
+      {
+        body: {
+          redemption: { ...item, status },
+        },
+      },
+    );
+
+    if (notifyError) {
+      console.error("Erreur envoi email client récompense :", notifyError.message);
     }
 
     setRewardMessage("Statut de la récompense mis à jour.");
@@ -822,14 +835,14 @@ export default function Admin({ session, onBack }) {
                     >
                       <button
                         className="btn btn-primary"
-                        onClick={() => updateRewardStatus(item.id, "approved")}
+                        onClick={() => updateRewardStatus(item, "approved")}
                       >
                         Valider
                       </button>
 
                       <button
                         className="btn btn-secondary"
-                        onClick={() => updateRewardStatus(item.id, "rejected")}
+                        onClick={() => updateRewardStatus(item, "rejected")}
                       >
                         Refuser
                       </button>
