@@ -1,25 +1,25 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./lib/supabase";
 
 const STORAGE_BUCKET = "loyalty-documents";
 
 const sectionTabs = [
   { key: "submissions", label: "Dossiers clients" },
-  { key: "rewards", label: "Récompenses" },
+  { key: "rewards", label: "RÃ©compenses" },
 ];
 
 const submissionTabs = [
   { key: "pending", label: "En cours" },
-  { key: "needs_info", label: "À compléter" },
-  { key: "validated", label: "Validées" },
-  { key: "rejected", label: "Refusées" },
+  { key: "needs_info", label: "Ã€ complÃ©ter" },
+  { key: "validated", label: "ValidÃ©es" },
+  { key: "rejected", label: "RefusÃ©es" },
 ];
 
 const rewardTabs = [
   { key: "pending", label: "En attente" },
-  { key: "approved", label: "Traitées" },
-  { key: "rejected", label: "Refusées" },
-  { key: "cancelled", label: "Annulées" },
+  { key: "approved", label: "TraitÃ©es" },
+  { key: "rejected", label: "RefusÃ©es" },
+  { key: "cancelled", label: "AnnulÃ©es" },
 ];
 
 const safeJsonParse = (value) => {
@@ -132,13 +132,13 @@ export default function Admin({ session, onBack }) {
     setRewardRedemptions(data || []);
   };
 
-  const updateRewardStatus = async (id, status) => {
+  const updateRewardStatus = async (reward, status) => {
     setRewardMessage("");
 
     const { error } = await supabase
       .from("reward_redemptions")
       .update({ status })
-      .eq("id", id);
+      .eq("id", reward.id);
 
     if (error) {
       console.error("Erreur update reward status :", error);
@@ -146,7 +146,28 @@ export default function Admin({ session, onBack }) {
       return;
     }
 
-    setRewardMessage("Statut de la récompense mis à jour.");
+    const { error: notifyError } = await supabase.functions.invoke(
+      "notify-submission-status",
+      {
+        body: {
+          redemption: {
+            ...reward,
+            status,
+          },
+        },
+      },
+    );
+
+    if (notifyError) {
+      console.error("Erreur envoi email récompense :", notifyError.message);
+      setRewardMessage(
+        `Statut mis à jour, mais l’e-mail client n’a pas pu être envoyé : ${notifyError.message}`,
+      );
+      fetchRewardRedemptions();
+      return;
+    }
+
+    setRewardMessage("Statut de la récompense mis à jour et e-mail envoyé.");
     fetchRewardRedemptions();
   };
 
@@ -183,7 +204,7 @@ export default function Admin({ session, onBack }) {
     }
 
     if (!document.file_path) {
-      setMessage("Impossible d’ouvrir ce document : chemin manquant.");
+      setMessage("Impossible dâ€™ouvrir ce document : chemin manquant.");
       return;
     }
 
@@ -196,8 +217,8 @@ export default function Admin({ session, onBack }) {
     setLoadingDocumentKey("");
 
     if (error) {
-      console.error("Erreur génération URL document :", error);
-      setMessage("Impossible d’ouvrir le document.");
+      console.error("Erreur gÃ©nÃ©ration URL document :", error);
+      setMessage("Impossible dâ€™ouvrir le document.");
       return;
     }
 
@@ -213,11 +234,11 @@ export default function Admin({ session, onBack }) {
   const getStatusLabel = (status) => {
     switch (status) {
       case "validated":
-        return "Validée";
+        return "ValidÃ©e";
       case "needs_info":
-        return "À compléter";
+        return "Ã€ complÃ©ter";
       case "rejected":
-        return "Refusée";
+        return "RefusÃ©e";
       default:
         return "En cours";
     }
@@ -239,11 +260,11 @@ export default function Admin({ session, onBack }) {
   const getRewardStatusLabel = (status) => {
     switch (status) {
       case "approved":
-        return "Traitée";
+        return "TraitÃ©e";
       case "rejected":
-        return "Refusée";
+        return "RefusÃ©e";
       case "cancelled":
-        return "Annulée";
+        return "AnnulÃ©e";
       default:
         return "En attente";
     }
@@ -301,13 +322,13 @@ export default function Admin({ session, onBack }) {
     if (notifyError) {
       console.error("Erreur envoi email :", notifyError.message);
       setMessage(
-        `Demande mise à jour, mais l’e-mail n’a pas pu être envoyé : ${notifyError.message}`,
+        `Demande mise Ã  jour, mais lâ€™e-mail nâ€™a pas pu Ãªtre envoyÃ© : ${notifyError.message}`,
       );
       fetchAllSubmissions();
       return;
     }
 
-    setMessage("Demande mise à jour avec succès et e-mail envoyé.");
+    setMessage("Demande mise Ã  jour avec succÃ¨s et e-mail envoyÃ©.");
     fetchAllSubmissions();
   };
 
@@ -425,7 +446,7 @@ export default function Admin({ session, onBack }) {
           </span>
           <img src="/qlima-logo.png" alt="Qlima" className="topbar-logo" />
           <button className="btn btn-secondary" onClick={onBack}>
-            Déconnexion
+            DÃ©connexion
           </button>
         </div>
       </header>
@@ -436,8 +457,8 @@ export default function Admin({ session, onBack }) {
             <div className="section-shape">
               <h2>Pilotage admin</h2>
               <p>
-                Retrouvez les dossiers clients et les demandes de récompenses
-                dans des espaces séparés.
+                Retrouvez les dossiers clients et les demandes de rÃ©compenses
+                dans des espaces sÃ©parÃ©s.
               </p>
             </div>
 
@@ -462,8 +483,8 @@ export default function Admin({ session, onBack }) {
                 type="text"
                 placeholder={
                   sectionTab === "submissions"
-                    ? "Nom, prénom ou e-mail"
-                    : "Récompense, nom ou e-mail"
+                    ? "Nom, prÃ©nom ou e-mail"
+                    : "RÃ©compense, nom ou e-mail"
                 }
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -477,8 +498,8 @@ export default function Admin({ session, onBack }) {
                 <div className="section-shape">
                   <h2>Dossiers clients</h2>
                   <p>
-                    Chaque dossier affiche maintenant les pièces jointes
-                    envoyées par le client pour la validation des points.
+                    Chaque dossier affiche maintenant les piÃ¨ces jointes
+                    envoyÃ©es par le client pour la validation des points.
                   </p>
                 </div>
 
@@ -557,26 +578,26 @@ export default function Admin({ session, onBack }) {
                       <div className="stat-box">
                         <span>Produit</span>
                         <strong style={{ fontSize: "20px" }}>
-                          {submission.fuel || "—"}
+                          {submission.fuel || "â€”"}
                         </strong>
                       </div>
 
                       <div className="stat-box">
-                        <span>Quantité</span>
+                        <span>QuantitÃ©</span>
                         <strong style={{ fontSize: "20px" }}>
                           {submission.quantity || 0}
                         </strong>
                       </div>
 
                       <div className="stat-box">
-                        <span>Points estimés</span>
+                        <span>Points estimÃ©s</span>
                         <strong style={{ fontSize: "20px" }}>
                           {submission.estimated_points || 0}
                         </strong>
                       </div>
 
                       <div className="stat-box">
-                        <span>Points attribués</span>
+                        <span>Points attribuÃ©s</span>
                         <strong style={{ fontSize: "20px" }}>
                           {submission.points_awarded || 0}
                         </strong>
@@ -585,10 +606,10 @@ export default function Admin({ session, onBack }) {
 
                     <div style={{ marginTop: "20px" }}>
                       <p className="muted" style={{ marginBottom: "6px" }}>
-                        <strong>Téléphone :</strong> {submission.phone || "—"}
+                        <strong>TÃ©lÃ©phone :</strong> {submission.phone || "â€”"}
                       </p>
                       <p className="muted" style={{ marginBottom: "6px" }}>
-                        <strong>Adresse :</strong> {submission.address || "—"}
+                        <strong>Adresse :</strong> {submission.address || "â€”"}
                       </p>
                       <p className="muted" style={{ marginBottom: "6px" }}>
                         <strong>Date :</strong>{" "}
@@ -596,7 +617,7 @@ export default function Admin({ session, onBack }) {
                           ? new Date(submission.created_at).toLocaleString(
                               "fr-FR",
                             )
-                          : "—"}
+                          : "â€”"}
                       </p>
                       {submission.comments ? (
                         <p className="muted" style={{ marginBottom: "6px" }}>
@@ -608,11 +629,11 @@ export default function Admin({ session, onBack }) {
 
                     <div style={{ marginTop: "20px" }}>
                       <p className="muted" style={{ marginBottom: "10px" }}>
-                        <strong>Pièces jointes client :</strong>
+                        <strong>PiÃ¨ces jointes client :</strong>
                       </p>
                       {renderDocuments(
                         submission.documents,
-                        "Aucune pièce jointe transmise",
+                        "Aucune piÃ¨ce jointe transmise",
                       )}
                     </div>
 
@@ -654,7 +675,7 @@ export default function Admin({ session, onBack }) {
                           updateSubmissionStatus(submission, "needs_info")
                         }
                       >
-                        Demander un complément
+                        Demander un complÃ©ment
                       </button>
 
                       <button
@@ -674,10 +695,10 @@ export default function Admin({ session, onBack }) {
             <>
               <div className="panel" style={{ marginTop: "20px" }}>
                 <div className="section-shape">
-                  <h2>Récompenses</h2>
+                  <h2>RÃ©compenses</h2>
                   <p>
-                    Les demandes de récompenses sont regroupées à part pour
-                    éviter de mélanger les validations de points et les
+                    Les demandes de rÃ©compenses sont regroupÃ©es Ã  part pour
+                    Ã©viter de mÃ©langer les validations de points et les
                     avantages clients.
                   </p>
                 </div>
@@ -705,7 +726,7 @@ export default function Admin({ session, onBack }) {
               {filteredRewards.length === 0 ? (
                 <div className="panel" style={{ marginTop: "20px" }}>
                   <p className="muted">
-                    Aucune demande de récompense dans cet onglet.
+                    Aucune demande de rÃ©compense dans cet onglet.
                   </p>
                 </div>
               ) : (
@@ -759,12 +780,12 @@ export default function Admin({ session, onBack }) {
                         <strong style={{ fontSize: "20px" }}>
                           {item.reward_type === "refund"
                             ? "Remboursement"
-                            : "Récompense"}
+                            : "RÃ©compense"}
                         </strong>
                       </div>
 
                       <div className="stat-box">
-                        <span>Points utilisés</span>
+                        <span>Points utilisÃ©s</span>
                         <strong style={{ fontSize: "20px" }}>
                           {item.points_used || 0}
                         </strong>
@@ -777,7 +798,7 @@ export default function Admin({ session, onBack }) {
                             ? new Date(item.created_at).toLocaleDateString(
                                 "fr-FR",
                               )
-                            : "—"}
+                            : "â€”"}
                         </strong>
                       </div>
                     </div>
@@ -797,8 +818,8 @@ export default function Admin({ session, onBack }) {
                     {item.reward_code === "extended_warranty_1y" ? (
                       <div style={{ marginTop: "20px" }}>
                         <p className="muted" style={{ marginBottom: "6px" }}>
-                          <strong>Numéro de série :</strong>{" "}
-                          {item.serial_number || "Non renseigné"}
+                          <strong>NumÃ©ro de sÃ©rie :</strong>{" "}
+                          {item.serial_number || "Non renseignÃ©"}
                         </p>
                         <p className="muted" style={{ marginBottom: "6px" }}>
                           <strong>Appareil encore sous garantie :</strong>{" "}
@@ -822,14 +843,14 @@ export default function Admin({ session, onBack }) {
                     >
                       <button
                         className="btn btn-primary"
-                        onClick={() => updateRewardStatus(item.id, "approved")}
+                        onClick={() => updateRewardStatus(item, "approved")}
                       >
                         Valider
                       </button>
 
                       <button
                         className="btn btn-secondary"
-                        onClick={() => updateRewardStatus(item.id, "rejected")}
+                        onClick={() => updateRewardStatus(item, "rejected")}
                       >
                         Refuser
                       </button>
@@ -844,3 +865,4 @@ export default function Admin({ session, onBack }) {
     </div>
   );
 }
+
