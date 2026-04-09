@@ -3,8 +3,13 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const ADMIN_EMAIL = Deno.env.get("ADMIN_EMAIL") || "fidelite@pvg.eu";
 const MAIL_FROM =
-  Deno.env.get("MAIL_FROM") || "Fidélité Qlima <no-reply@fidelite.qlima.fr>";
+  Deno.env.get("MAIL_FROM") || "Qlima Premium Club <onboarding@resend.dev>";
 const MAIL_REPLY_TO = Deno.env.get("MAIL_REPLY_TO") || ADMIN_EMAIL;
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
 function escapeHtml(value: string) {
   return value
@@ -16,9 +21,16 @@ function escapeHtml(value: string) {
 }
 
 serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
   try {
-    if (req.method !== "POST") {
-      return new Response("Method Not Allowed", { status: 405 });
+    if (!RESEND_API_KEY) {
+      return new Response(
+        JSON.stringify({ error: "RESEND_API_KEY non configuré" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     const { submission } = await req.json();
@@ -33,8 +45,9 @@ serve(async (req) => {
         <ul>
           <li><strong>Nom :</strong> ${escapeHtml(fullName)}</li>
           <li><strong>Email :</strong> ${escapeHtml(submission?.email || "Non renseigné")}</li>
-          <li><strong>Produit :</strong> ${escapeHtml(submission?.product_name || "Non renseigné")}</li>
-          <li><strong>Points :</strong> ${submission?.points ?? 0}</li>
+          <li><strong>Produit :</strong> ${escapeHtml(submission?.fuel || submission?.product_name || "Non renseigné")}</li>
+          <li><strong>Quantité :</strong> ${submission?.quantity ?? ""}</li>
+          <li><strong>Points estimés :</strong> ${submission?.estimated_points ?? 0}</li>
           <li><strong>Statut :</strong> ${escapeHtml(submission?.status || "pending")}</li>
         </ul>
       </div>
@@ -60,12 +73,12 @@ serve(async (req) => {
     if (!resendResponse.ok) {
       return new Response(
         JSON.stringify({ error: "Erreur Resend", details: resendData }),
-        { status: 500, headers: { "Content-Type": "application/json" } },
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });
   } catch (error) {
@@ -73,7 +86,7 @@ serve(async (req) => {
       JSON.stringify({
         error: error instanceof Error ? error.message : "Erreur inconnue",
       }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });

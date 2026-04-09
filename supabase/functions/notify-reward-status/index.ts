@@ -1,10 +1,8 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-const ADMIN_EMAIL = Deno.env.get("ADMIN_EMAIL") || "fidelite@pvg.eu";
 const MAIL_FROM =
   Deno.env.get("MAIL_FROM") || "Qlima Premium Club <onboarding@resend.dev>";
-const MAIL_REPLY_TO = Deno.env.get("MAIL_REPLY_TO") || ADMIN_EMAIL;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,20 +26,41 @@ serve(async (req) => {
   try {
     const { redemption } = await req.json();
 
+    if (!redemption?.email) {
+      return new Response(
+        JSON.stringify({ error: "Email du client manquant" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const fullName =
       `${redemption?.first_name || ""} ${redemption?.last_name || ""}`.trim() ||
-      "Non renseigné";
+      "Client";
+
+    const statusLabels: Record<string, string> = {
+      approved: "Validée ✅",
+      rejected: "Refusée ❌",
+      cancelled: "Annulée",
+      pending: "En attente",
+    };
+
+    const statusLabel = statusLabels[redemption?.status] ?? redemption?.status;
+
+    const approvedBlock =
+      redemption?.status === "approved"
+        ? `<p>Votre récompense va être traitée dans les meilleurs délais. Si un virement est prévu, il peut prendre jusqu'à 6 semaines.</p>`
+        : "";
 
     const html = `
-      <div style="font-family: Arial, sans-serif; color: #101828;">
-        <h2>Nouvelle demande de récompense</h2>
-        <ul>
-          <li><strong>Nom :</strong> ${escapeHtml(fullName)}</li>
-          <li><strong>Email :</strong> ${escapeHtml(redemption?.email || "Non renseigné")}</li>
-          <li><strong>Récompense :</strong> ${escapeHtml(redemption?.reward_title || "Non renseigné")}</li>
-          <li><strong>Points utilisés :</strong> ${redemption?.points_used ?? 0}</li>
-          <li><strong>Statut :</strong> ${escapeHtml(redemption?.status || "pending")}</li>
-        </ul>
+      <div style="font-family: Arial, sans-serif; color: #101828; line-height: 1.6;">
+        <h2>Mise à jour de votre demande de récompense</h2>
+        <p>Bonjour ${escapeHtml(fullName)},</p>
+        <p>Votre demande de récompense a été mise à jour.</p>
+        <p><strong>Récompense :</strong> ${escapeHtml(redemption?.reward_title || "")}</p>
+        <p><strong>Statut :</strong> ${escapeHtml(statusLabel)}</p>
+        ${approvedBlock}
+        <p>Connectez-vous à votre espace fidélité pour consulter le détail.</p>
+        <p>Cordialement,<br>L'équipe Qlima</p>
       </div>
     `;
 
@@ -53,9 +72,8 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         from: MAIL_FROM,
-        to: [ADMIN_EMAIL],
-        reply_to: MAIL_REPLY_TO ? [MAIL_REPLY_TO] : undefined,
-        subject: "Nouvelle demande de récompense",
+        to: [redemption.email],
+        subject: `Votre récompense "${redemption?.reward_title || ""}" — ${statusLabel}`,
         html,
       }),
     });

@@ -132,13 +132,21 @@ export default function Admin({ session, onBack }) {
     setRewardRedemptions(data || []);
   };
 
+<<<<<<< HEAD
   const updateRewardStatus = async (reward, status) => {
+=======
+  const updateRewardStatus = async (item, status) => {
+>>>>>>> 9142eab5a4e1f65e272e6d96a1392c84576ab7cf
     setRewardMessage("");
 
     const { error } = await supabase
       .from("reward_redemptions")
       .update({ status })
+<<<<<<< HEAD
       .eq("id", reward.id);
+=======
+      .eq("id", item.id);
+>>>>>>> 9142eab5a4e1f65e272e6d96a1392c84576ab7cf
 
     if (error) {
       console.error("Erreur update reward status :", error);
@@ -147,6 +155,7 @@ export default function Admin({ session, onBack }) {
     }
 
     const { error: notifyError } = await supabase.functions.invoke(
+<<<<<<< HEAD
       "notify-submission-status",
       {
         body: {
@@ -154,11 +163,18 @@ export default function Admin({ session, onBack }) {
             ...reward,
             status,
           },
+=======
+      "notify-reward-status",
+      {
+        body: {
+          redemption: { ...item, status },
+>>>>>>> 9142eab5a4e1f65e272e6d96a1392c84576ab7cf
         },
       },
     );
 
     if (notifyError) {
+<<<<<<< HEAD
       console.error("Erreur envoi email récompense :", notifyError.message);
       setRewardMessage(
         `Statut mis à jour, mais l’e-mail client n’a pas pu être envoyé : ${notifyError.message}`,
@@ -168,6 +184,12 @@ export default function Admin({ session, onBack }) {
     }
 
     setRewardMessage("Statut de la récompense mis à jour et e-mail envoyé.");
+=======
+      console.error("Erreur envoi email client récompense :", notifyError.message);
+    }
+
+    setRewardMessage("Statut de la récompense mis à jour.");
+>>>>>>> 9142eab5a4e1f65e272e6d96a1392c84576ab7cf
     fetchRewardRedemptions();
   };
 
