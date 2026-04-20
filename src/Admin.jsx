@@ -4,8 +4,8 @@ import { supabase } from "./lib/supabase";
 const STORAGE_BUCKET = "loyalty-documents";
 
 const sectionTabs = [
-  { key: "submissions", label: "Dossiers clients" },
-  { key: "rewards", label: "Récompenses" },
+  { key: "submissions", label: "Demandes de points" },
+  { key: "rewards", label: "Demandes de récompenses" },
 ];
 
 const submissionTabs = [
@@ -97,6 +97,16 @@ const normalizeDocuments = (rawValue) => {
       };
     })
     .filter(Boolean);
+};
+
+const formatDateTime = (value) => {
+  if (!value) return "—";
+  return new Date(value).toLocaleString("fr-FR");
+};
+
+const formatDate = (value) => {
+  if (!value) return "—";
+  return new Date(value).toLocaleDateString("fr-FR");
 };
 
 export default function Admin({ session, onBack }) {
@@ -396,6 +406,64 @@ export default function Admin({ session, onBack }) {
     );
   });
 
+  const dashboardStats = useMemo(() => {
+    const totalSubmissions = submissions.length;
+    const totalRewards = rewardRedemptions.length;
+    const totalPointsAwarded = submissions.reduce(
+      (sum, item) => sum + Number(item.points_awarded || 0),
+      0,
+    );
+    const totalPointsRequested = submissions.reduce(
+      (sum, item) => sum + Number(item.estimated_points || 0),
+      0,
+    );
+    const totalPointsUsed = rewardRedemptions.reduce(
+      (sum, item) => sum + Number(item.points_used || 0),
+      0,
+    );
+    const validationRate = totalSubmissions
+      ? Math.round((validatedSubmissions.length / totalSubmissions) * 100)
+      : 0;
+    const rewardsApprovalRate = totalRewards
+      ? Math.round((rewardCounts.approved / totalRewards) * 100)
+      : 0;
+
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const recentSubmissions = submissions.filter((item) => {
+      if (!item.created_at) return false;
+      return new Date(item.created_at) >= sevenDaysAgo;
+    }).length;
+
+    const recentRewards = rewardRedemptions.filter((item) => {
+      if (!item.created_at) return false;
+      return new Date(item.created_at) >= sevenDaysAgo;
+    }).length;
+
+    const latestSubmission = submissions[0] || null;
+    const latestReward = rewardRedemptions[0] || null;
+
+    return {
+      totalSubmissions,
+      totalRewards,
+      totalPointsAwarded,
+      totalPointsRequested,
+      totalPointsUsed,
+      validationRate,
+      rewardsApprovalRate,
+      recentSubmissions,
+      recentRewards,
+      latestSubmission,
+      latestReward,
+    };
+  }, [
+    submissions,
+    rewardRedemptions,
+    validatedSubmissions.length,
+    rewardCounts.approved,
+  ]);
+
   const renderDocuments = (documents, emptyLabel = "Aucun document") => {
     const normalized = normalizeDocuments(documents);
 
@@ -457,9 +525,131 @@ export default function Admin({ session, onBack }) {
             <div className="section-shape">
               <h2>Pilotage admin</h2>
               <p>
-                Retrouvez les dossiers clients et les demandes de récompenses
+                Retrouvez les demandes de points et les demandes de récompenses
                 dans des espaces séparés.
               </p>
+            </div>
+
+            <div className="admin-dashboard-grid">
+              <div className="stat-box admin-stat-card admin-stat-highlight">
+                <span>Demandes de points à traiter</span>
+                <strong>{pendingSubmissions.length}</strong>
+                <small>{needsInfoSubmissions.length} à compléter</small>
+              </div>
+
+              <div className="stat-box admin-stat-card">
+                <span>Taux de validation</span>
+                <strong>{dashboardStats.validationRate}%</strong>
+                <small>{validatedSubmissions.length} demandes validées</small>
+              </div>
+
+              <div className="stat-box admin-stat-card">
+                <span>Points attribués</span>
+                <strong>{dashboardStats.totalPointsAwarded}</strong>
+                <small>
+                  {dashboardStats.totalPointsRequested} points demandés
+                </small>
+              </div>
+
+              <div className="stat-box admin-stat-card">
+                <span>Récompenses en attente</span>
+                <strong>{rewardCounts.pending}</strong>
+                <small>{rewardCounts.approved} déjà traitées</small>
+              </div>
+            </div>
+
+            <div className="admin-dashboard-grid admin-dashboard-grid-secondary">
+              <div className="panel admin-mini-panel">
+                <div className="admin-mini-header">
+                  <h3>Demandes de points</h3>
+                  <span className="mini-chip">
+                    {dashboardStats.totalSubmissions} total
+                  </span>
+                </div>
+                <div className="admin-kpi-list">
+                  <div>
+                    <span>En cours</span>
+                    <strong>{pendingSubmissions.length}</strong>
+                  </div>
+                  <div>
+                    <span>Validées</span>
+                    <strong>{validatedSubmissions.length}</strong>
+                  </div>
+                  <div>
+                    <span>Refusées</span>
+                    <strong>{rejectedSubmissions.length}</strong>
+                  </div>
+                  <div>
+                    <span>7 derniers jours</span>
+                    <strong>{dashboardStats.recentSubmissions}</strong>
+                  </div>
+                </div>
+                <div className="progress-block">
+                  <div className="progress-label">
+                    <span>Validation globale</span>
+                    <span>{dashboardStats.validationRate}%</span>
+                  </div>
+                  <div className="progress-bar">
+                    <div
+                      className="progress-fill"
+                      style={{ width: `${dashboardStats.validationRate}%` }}
+                    />
+                  </div>
+                </div>
+                <p className="muted admin-last-activity">
+                  Dernière demande :{" "}
+                  {dashboardStats.latestSubmission
+                    ? `${dashboardStats.latestSubmission.first_name || ""} ${dashboardStats.latestSubmission.last_name || ""} · ${formatDateTime(dashboardStats.latestSubmission.created_at)}`
+                    : "Aucune demande"}
+                </p>
+              </div>
+
+              <div className="panel admin-mini-panel">
+                <div className="admin-mini-header">
+                  <h3>Demandes de récompenses</h3>
+                  <span className="mini-chip">
+                    {dashboardStats.totalRewards} total
+                  </span>
+                </div>
+                <div className="admin-kpi-list">
+                  <div>
+                    <span>En attente</span>
+                    <strong>{rewardCounts.pending}</strong>
+                  </div>
+                  <div>
+                    <span>Traitées</span>
+                    <strong>{rewardCounts.approved}</strong>
+                  </div>
+                  <div>
+                    <span>Refusées</span>
+                    <strong>{rewardCounts.rejected}</strong>
+                  </div>
+                  <div>
+                    <span>Points utilisés</span>
+                    <strong>{dashboardStats.totalPointsUsed}</strong>
+                  </div>
+                </div>
+                <div className="progress-block">
+                  <div className="progress-label">
+                    <span>Taux de traitement</span>
+                    <span>{dashboardStats.rewardsApprovalRate}%</span>
+                  </div>
+                  <div className="progress-bar">
+                    <div
+                      className="progress-fill"
+                      style={{
+                        width: `${dashboardStats.rewardsApprovalRate}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+                <p className="muted admin-last-activity">
+                  Dernière demande :{" "}
+                  {dashboardStats.latestReward
+                    ? `${dashboardStats.latestReward.reward_title || "Récompense"} · ${formatDateTime(dashboardStats.latestReward.created_at)}`
+                    : "Aucune demande"}
+                </p>
+              </div>
             </div>
 
             <div
@@ -496,10 +686,10 @@ export default function Admin({ session, onBack }) {
             <>
               <div className="panel" style={{ marginTop: "20px" }}>
                 <div className="section-shape">
-                  <h2>Dossiers clients</h2>
+                  <h2>Demandes de points</h2>
                   <p>
-                    Chaque dossier affiche maintenant les pièces jointes
-                    envoyées par le client pour la validation des points.
+                    Chaque demande affiche les pièces jointes envoyées par le
+                    client pour la validation des points.
                   </p>
                 </div>
 
@@ -613,11 +803,7 @@ export default function Admin({ session, onBack }) {
                       </p>
                       <p className="muted" style={{ marginBottom: "6px" }}>
                         <strong>Date :</strong>{" "}
-                        {submission.created_at
-                          ? new Date(submission.created_at).toLocaleString(
-                              "fr-FR",
-                            )
-                          : "—"}
+                        {formatDateTime(submission.created_at)}
                       </p>
                       {submission.comments ? (
                         <p className="muted" style={{ marginBottom: "6px" }}>
@@ -695,7 +881,7 @@ export default function Admin({ session, onBack }) {
             <>
               <div className="panel" style={{ marginTop: "20px" }}>
                 <div className="section-shape">
-                  <h2>Récompenses</h2>
+                  <h2>Demandes de récompenses</h2>
                   <p>
                     Les demandes de récompenses sont regroupées à part pour
                     éviter de mélanger les validations de points et les
@@ -794,11 +980,7 @@ export default function Admin({ session, onBack }) {
                       <div className="stat-box">
                         <span>Date de demande</span>
                         <strong style={{ fontSize: "20px" }}>
-                          {item.created_at
-                            ? new Date(item.created_at).toLocaleDateString(
-                                "fr-FR",
-                              )
-                            : "—"}
+                          {formatDate(item.created_at)}
                         </strong>
                       </div>
                     </div>

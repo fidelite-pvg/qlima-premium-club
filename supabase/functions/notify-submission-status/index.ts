@@ -1,5 +1,3 @@
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const MAIL_FROM =
   Deno.env.get("MAIL_FROM") || "Qlima Premium Club <onboarding@resend.dev>";
@@ -7,21 +5,7 @@ const MAIL_REPLY_TO = Deno.env.get("MAIL_REPLY_TO");
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
-
-type Submission = {
-  id?: string;
-  first_name?: string | null;
-  last_name?: string | null;
-  email?: string | null;
-  fuel?: string | null;
-  quantity?: number | null;
-  estimated_points?: number | null;
-  points_awarded?: number | null;
-  status?: string | null;
-  admin_message?: string | null;
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 function escapeHtml(value: string) {
@@ -36,13 +20,13 @@ function escapeHtml(value: string) {
 function getStatusLabel(status?: string | null) {
   switch (status) {
     case "validated":
-      return "validée";
+      return "validée ✅";
     case "approved":
-      return "validée";
+      return "validée ✅";
     case "rejected":
-      return "refusée";
+      return "refusée ❌";
     case "needs_info":
-      return "à compléter";
+      return "à compléter ℹ️";
     case "cancelled":
       return "annulée";
     case "pending":
@@ -52,39 +36,38 @@ function getStatusLabel(status?: string | null) {
   }
 }
 
-serve(async (req) => {
+Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    if (!RESEND_API_KEY) {
-      throw new Error("RESEND_API_KEY manquant");
-    }
+    if (!RESEND_API_KEY) throw new Error("RESEND_API_KEY manquant");
 
     const body = await req.json();
-    const submission: Submission | undefined = body?.submission;
+    const submission = body?.submission;
 
-    if (!submission) {
-      return new Response(JSON.stringify({ error: "submission manquant" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (!submission?.email) {
+      return new Response(
+        JSON.stringify({ error: "Email du client manquant" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     const fullName =
       `${submission.first_name || ""} ${submission.last_name || ""}`.trim() ||
       "Client";
-
     const statusLabel = getStatusLabel(submission.status);
     const adminMessage = submission.admin_message?.trim();
-    const toEmail = submission.email || "";
 
-    if (!toEmail) {
-      throw new Error("Email destinataire manquant");
-    }
+    const adminMessageBlock = adminMessage
+      ? `<p><strong>Message de notre équipe :</strong><br>${escapeHtml(adminMessage)}</p>`
+      : "";
 
-    const subject = `Votre demande de points a été ${statusLabel}`;
+    const pointsBlock =
+      submission.status === "validated" && submission.points_awarded
+        ? `<p><strong>Points attribués :</strong> ${escapeHtml(String(submission.points_awarded))} points</p>`
+        : "";
 
     const html = `
       <div style="font-family: Arial, sans-serif; color: #192021; line-height: 1.6;">
@@ -95,15 +78,12 @@ serve(async (req) => {
           <li><strong>Produit :</strong> ${escapeHtml(submission.fuel || "Non renseigné")}</li>
           <li><strong>Quantité :</strong> ${escapeHtml(String(submission.quantity ?? 0))}</li>
           <li><strong>Points estimés :</strong> ${escapeHtml(String(submission.estimated_points ?? 0))}</li>
-          <li><strong>Points attribués :</strong> ${escapeHtml(String(submission.points_awarded ?? 0))}</li>
           <li><strong>Statut :</strong> ${escapeHtml(statusLabel)}</li>
         </ul>
-        ${
-          adminMessage
-            ? `<p><strong>Message de l’équipe :</strong><br />${escapeHtml(adminMessage)}</p>`
-            : ""
-        }
-        <p>Merci pour votre participation au programme Qlima Premium Club.</p>
+        ${pointsBlock}
+        ${adminMessageBlock}
+        <p>Connectez-vous à votre espace fidélité pour consulter le détail.</p>
+        <p>Cordialement,<br>L'équipe Qlima</p>
       </div>
     `;
 
@@ -115,9 +95,9 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         from: MAIL_FROM,
-        to: [toEmail],
+        to: [submission.email],
         reply_to: MAIL_REPLY_TO ? [MAIL_REPLY_TO] : undefined,
-        subject,
+        subject: `Votre demande de points — ${statusLabel}`,
         html,
       }),
     });
@@ -127,10 +107,7 @@ serve(async (req) => {
     if (!resendResponse.ok) {
       return new Response(
         JSON.stringify({ error: "Erreur Resend", details: resendData }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        },
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
@@ -143,10 +120,7 @@ serve(async (req) => {
       JSON.stringify({
         error: error instanceof Error ? error.message : "Erreur inconnue",
       }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
