@@ -3,6 +3,92 @@ import "./App.css";
 import { supabase } from "./lib/supabase";
 import Admin from "./Admin";
 
+const STORAGE_BUCKET = "loyalty-documents";
+
+const customerSubmissionTabs = [
+  { key: "pending", label: "En attente" },
+  { key: "validated", label: "Validé" },
+  { key: "needs_info", label: "À compléter" },
+  { key: "rejected", label: "Refusé" },
+];
+
+const safeJsonParse = (value) => {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+};
+
+const normalizeDocuments = (rawValue) => {
+  if (!rawValue) return [];
+
+  let documents = rawValue;
+
+  if (typeof documents === "string") {
+    const parsed = safeJsonParse(documents);
+    documents = parsed ?? [];
+  }
+
+  if (documents && typeof documents === "object" && !Array.isArray(documents)) {
+    if (Array.isArray(documents.documents)) {
+      documents = documents.documents;
+    } else {
+      documents = [documents];
+    }
+  }
+
+  if (!Array.isArray(documents)) return [];
+
+  return documents
+    .map((doc, index) => {
+      if (!doc) return null;
+
+      if (typeof doc === "string") {
+        const parsed = safeJsonParse(doc);
+        if (parsed && typeof parsed === "object") {
+          doc = parsed;
+        } else {
+          return {
+            key: `${doc}-${index}`,
+            file_name: doc,
+            file_path: "",
+            url: "",
+            bucket: STORAGE_BUCKET,
+          };
+        }
+      }
+
+      const filePath =
+        doc.file_path ||
+        doc.path ||
+        doc.storage_path ||
+        doc.fullPath ||
+        doc.name ||
+        "";
+
+      const fileName =
+        doc.file_name ||
+        doc.filename ||
+        doc.name ||
+        (typeof filePath === "string" && filePath.includes("/")
+          ? filePath.split("/").pop()
+          : filePath) ||
+        `Document ${index + 1}`;
+
+      return {
+        key: `${filePath || fileName}-${index}`,
+        file_name: fileName,
+        file_path: filePath,
+        url: doc.url || doc.publicUrl || doc.signedUrl || "",
+        bucket: doc.storage_bucket || doc.bucket || STORAGE_BUCKET,
+        mime_type: doc.mime_type || doc.type || "",
+        document_kind: doc.document_kind || doc.kind || "",
+      };
+    })
+    .filter(Boolean);
+};
+
 const fuels = [
   { name: "Kristal Shine", points: 4 },
   { name: "Bright 20 L", points: 3 },
@@ -68,6 +154,19 @@ export default function App() {
   const [rewardRedemptions, setRewardRedemptions] = useState([]);
   const [rewardModalOpen, setRewardModalOpen] = useState(false);
   const [rewardModalMessage, setRewardModalMessage] = useState("");
+  const [activeSubmissionTab, setActiveSubmissionTab] = useState("pending");
+  const [selectedSubmission, setSelectedSubmission] = useState(null);
+  const [completionFiles, setCompletionFiles] = useState([]);
+  const [completionComment, setCompletionComment] = useState("");
+  const [completionMessage, setCompletionMessage] = useState("");
+  const [isCompletingSubmission, setIsCompletingSubmission] = useState(false);
+  const [documentUrls, setDocumentUrls] = useState({});
+  const [loadingDocumentKey, setLoadingDocumentKey] = useState("");
+  const [confirmationPopup, setConfirmationPopup] = useState({
+    open: false,
+    title: "",
+    description: "",
+  });
   const [rewardForm, setRewardForm] = useState({
     serialNumber: "",
     warrantyConfirmed: false,
@@ -97,10 +196,29 @@ export default function App() {
   const isAdmin = session?.user?.email === "fidelite@pvg.eu";
 
   useEffect(() => {
+    let isMounted = true;
+
     const getInitialSession = async () => {
-      const { data } = await supabase.auth.getSession();
-      setSession(data.session ?? null);
-      setLoading(false);
+      try {
+        const { data, error } = await supabase.auth.getSession();
+
+        if (error) {
+          console.error("Erreur getSession :", error);
+        }
+
+        if (isMounted) {
+          setSession(data?.session ?? null);
+        }
+      } catch (error) {
+        console.error("Erreur initialisation session :", error);
+        if (isMounted) {
+          setSession(null);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
     };
 
     getInitialSession();
@@ -108,10 +226,16 @@ export default function App() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession ?? null);
+      if (isMounted) {
+        setSession(newSession ?? null);
+        setLoading(false);
+      }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -120,6 +244,18 @@ export default function App() {
       fetchRewardRedemptions();
     }
   }, [session, isAdmin]);
+
+  useEffect(() => {
+    if (!selectedSubmission) return;
+
+    const refreshedSubmission = submissions.find(
+      (item) => item.id === selectedSubmission.id,
+    );
+
+    if (refreshedSubmission) {
+      setSelectedSubmission(refreshedSubmission);
+    }
+  }, [submissions, selectedSubmission]);
 
   const estimatedPoints = useMemo(() => {
     const selectedFuel = fuels.find((fuel) => fuel.name === purchaseForm.fuel);
@@ -155,6 +291,26 @@ export default function App() {
   const latestRedemption = rewardRedemptions[0] || null;
   const isWarrantyReward = selectedReward?.code === "extended_warranty_1y";
 
+  const submissionTabs = [
+    { key: "pending", label: "En attente" },
+    { key: "validated", label: "Validé" },
+    { key: "needs_info", label: "À compléter" },
+    { key: "rejected", label: "Refusé" },
+  ];
+
+  const submissionCounts = useMemo(() => {
+    return customerSubmissionTabs.reduce((acc, tab) => {
+      acc[tab.key] = submissions.filter(
+        (item) => item.status === tab.key,
+      ).length;
+      return acc;
+    }, {});
+  }, [submissions]);
+
+  const filteredSubmissions = useMemo(() => {
+    return submissions.filter((item) => item.status === activeSubmissionTab);
+  }, [submissions, activeSubmissionTab]);
+
   const handleAuthChange = (field, value) => {
     setAuthForm((prev) => ({ ...prev, [field]: value }));
   };
@@ -166,6 +322,11 @@ export default function App() {
   const handleFiles = (e) => {
     const files = Array.from(e.target.files || []);
     setUploadedFiles(files);
+  };
+
+  const handleCompletionFiles = (e) => {
+    const files = Array.from(e.target.files || []);
+    setCompletionFiles(files);
   };
 
   const normalizedEmail = authForm.email.trim().toLowerCase();
@@ -217,6 +378,19 @@ export default function App() {
     }
   };
 
+  const getSubmissionStatusDescription = (status) => {
+    switch (status) {
+      case "validated":
+        return "Votre demande a été acceptée et les points ont été crédités.";
+      case "needs_info":
+        return "Votre dossier a besoin d’un complément avant d’être traité.";
+      case "rejected":
+        return "Votre demande a été refusée par notre équipe.";
+      default:
+        return "Votre demande est en cours d’analyse par notre équipe.";
+    }
+  };
+
   const handleRewardFormChange = (field, value) => {
     setRewardForm((prev) => ({ ...prev, [field]: value }));
   };
@@ -261,6 +435,171 @@ export default function App() {
     setRewardInvoiceFile(null);
     setRewardBankDetailsFile(null);
     setRewardPurchaseProofFile(null);
+  };
+
+  const openConfirmationPopup = (title, description) => {
+    setConfirmationPopup({
+      open: true,
+      title,
+      description,
+    });
+  };
+
+  const closeConfirmationPopup = () => {
+    setConfirmationPopup({
+      open: false,
+      title: "",
+      description: "",
+    });
+  };
+
+  const openSubmissionDetails = (submission) => {
+    setSelectedSubmission(submission);
+    setCompletionFiles([]);
+    setCompletionComment("");
+    setCompletionMessage("");
+  };
+
+  const closeSubmissionDetails = () => {
+    setSelectedSubmission(null);
+    setCompletionFiles([]);
+    setCompletionComment("");
+    setCompletionMessage("");
+  };
+
+  const openDocument = async (document) => {
+    if (!document) return;
+
+    const directUrl = document.url;
+    if (directUrl) {
+      window.open(directUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    const cacheKey = `${document.bucket || STORAGE_BUCKET}:${document.file_path}`;
+    if (documentUrls[cacheKey]) {
+      window.open(documentUrls[cacheKey], "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    if (!document.file_path) {
+      setMessage("Impossible d’ouvrir ce document : chemin manquant.");
+      return;
+    }
+
+    setLoadingDocumentKey(cacheKey);
+
+    const { data, error } = await supabase.storage
+      .from(document.bucket || STORAGE_BUCKET)
+      .createSignedUrl(document.file_path, 60 * 10);
+
+    setLoadingDocumentKey("");
+
+    if (error) {
+      console.error("Erreur génération URL document :", error);
+      setMessage("Impossible d’ouvrir le document.");
+      return;
+    }
+
+    if (data?.signedUrl) {
+      setDocumentUrls((prev) => ({
+        ...prev,
+        [cacheKey]: data.signedUrl,
+      }));
+      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    }
+  };
+
+  const uploadAdditionalSubmissionFiles = async () => {
+    if (!session?.user || completionFiles.length === 0) return [];
+
+    const uploaded = [];
+
+    for (const file of completionFiles) {
+      const extension = file.name.split(".").pop();
+      const uniqueName = `${session.user.id}/submission-completions/${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}.${extension}`;
+
+      const { error } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .upload(uniqueName, file);
+
+      if (error) throw error;
+
+      uploaded.push({
+        file_name: file.name,
+        file_path: uniqueName,
+        storage_bucket: STORAGE_BUCKET,
+        uploaded_at: new Date().toISOString(),
+        document_kind: "completion_document",
+      });
+    }
+
+    return uploaded;
+  };
+
+  const handleCompleteSubmission = async () => {
+    if (!selectedSubmission || selectedSubmission.status !== "needs_info")
+      return;
+
+    if (!completionComment.trim() && completionFiles.length === 0) {
+      setCompletionMessage(
+        "Ajoutez un message ou au moins un document pour compléter votre dossier.",
+      );
+      return;
+    }
+
+    setCompletionMessage("");
+    setIsCompletingSubmission(true);
+
+    try {
+      const uploaded = await uploadAdditionalSubmissionFiles();
+      const existingDocuments = normalizeDocuments(
+        selectedSubmission.documents,
+      ).map((doc) => ({
+        file_name: doc.file_name,
+        file_path: doc.file_path,
+        url: doc.url,
+        storage_bucket: doc.bucket || STORAGE_BUCKET,
+        mime_type: doc.mime_type || null,
+        document_kind: doc.document_kind || null,
+      }));
+
+      const completionEntry = completionComment.trim()
+        ? `Complément client du ${new Date().toLocaleDateString("fr-FR")} : ${completionComment.trim()}`
+        : "";
+
+      const nextComments = [selectedSubmission.comments, completionEntry]
+        .filter(Boolean)
+        .join("\n\n");
+
+      const { error } = await supabase
+        .from("loyalty_submissions")
+        .update({
+          documents: [...existingDocuments, ...uploaded],
+          comments: nextComments,
+          status: "pending",
+        })
+        .eq("id", selectedSubmission.id);
+
+      if (error) throw error;
+
+      await fetchSubmissions();
+      closeSubmissionDetails();
+      openConfirmationPopup(
+        "Dossier complété",
+        "Votre complément a bien été envoyé. Votre dossier repasse en cours de traitement.",
+      );
+      setMessage("Votre complément a bien été transmis à notre équipe.");
+    } catch (error) {
+      setCompletionMessage(
+        error?.message ||
+          "Impossible de compléter votre dossier pour le moment.",
+      );
+    } finally {
+      setIsCompletingSubmission(false);
+    }
   };
 
   const signUp = async (e) => {
@@ -417,6 +756,18 @@ export default function App() {
     setRewardRedemptions(data || []);
   };
 
+  const openStoredDocument = async (filePath) => {
+    if (!filePath) return;
+
+    const { data } = supabase.storage
+      .from("loyalty-documents")
+      .getPublicUrl(filePath);
+
+    if (data?.publicUrl) {
+      window.open(data.publicUrl, "_blank", "noopener,noreferrer");
+    }
+  };
+
   const uploadFiles = async () => {
     if (!session?.user || uploadedFiles.length === 0) return [];
 
@@ -429,7 +780,7 @@ export default function App() {
         .slice(2)}.${extension}`;
 
       const { error } = await supabase.storage
-        .from("loyalty-documents")
+        .from(STORAGE_BUCKET)
         .upload(uniqueName, file);
 
       if (error) throw error;
@@ -452,7 +803,7 @@ export default function App() {
       .slice(2)}.${extension}`;
 
     const { error } = await supabase.storage
-      .from("loyalty-documents")
+      .from(STORAGE_BUCKET)
       .upload(uniqueName, file, {
         contentType: file.type || undefined,
         upsert: false,
@@ -465,7 +816,7 @@ export default function App() {
       file_path: uniqueName,
       path: uniqueName,
       storage_path: uniqueName,
-      storage_bucket: "loyalty-documents",
+      storage_bucket: STORAGE_BUCKET,
       mime_type: file.type || null,
       document_kind: documentKind || null,
       uploaded_at: new Date().toISOString(),
@@ -476,8 +827,19 @@ export default function App() {
     e.preventDefault();
     setMessage("");
 
+    if (!uploadedFiles.length) {
+      setMessage(
+        "Veuillez joindre au moins une facture ou un justificatif avant d’envoyer votre demande de points.",
+      );
+      openConfirmationPopup(
+        "Pièce jointe obligatoire",
+        "Ajoutez au moins une facture ou un justificatif pour envoyer votre demande de points.",
+      );
+      return;
+    }
+
     try {
-      const uploaded = await uploadFiles();
+      const uploaded = await uploadFiles(uploadedFiles, "submissions");
 
       const submissionPayload = {
         user_id: session.user.id,
@@ -525,13 +887,20 @@ export default function App() {
       );
 
       if (notifyError) {
-        console.error("Erreur envoi email admin :", notifyError.message);
+        console.error("Erreur envoi email de demande :", notifyError.message);
         setMessage(
-          `Votre demande a bien été envoyée, mais l’e-mail de notification admin a échoué : ${notifyError.message}`,
+          `Votre demande a bien été envoyée, mais l’e-mail de confirmation n’a pas pu être envoyé immédiatement : ${notifyError.message}`,
         );
       } else {
-        setMessage("Votre demande a bien été envoyée.");
+        setMessage(
+          "Votre demande a bien été envoyée et un e-mail de confirmation vous a été adressé.",
+        );
       }
+
+      openConfirmationPopup(
+        "Demande envoyée",
+        "Votre demande de points a bien été envoyée. Elle sera traitée prochainement par notre équipe.",
+      );
 
       setPurchaseForm({
         fuel: "Kristal Shine",
@@ -687,15 +1056,20 @@ export default function App() {
       );
 
       if (notifyError) {
-        console.error("Erreur envoi email admin récompense :", notifyError);
+        console.error("Erreur envoi email de récompense :", notifyError);
         setMessage(
-          "Votre demande de récompense a bien été enregistrée, mais l’e-mail de notification admin a échoué.",
+          "Votre demande de récompense a bien été enregistrée, mais l’e-mail de confirmation n’a pas pu être envoyé immédiatement.",
         );
       } else {
         setMessage(
-          "Votre demande de récompense a bien été enregistrée. Vos points ont été débités.",
+          "Votre demande de récompense a bien été enregistrée. Un e-mail de confirmation vous a été adressé.",
         );
       }
+
+      openConfirmationPopup(
+        "Demande de récompense envoyée",
+        "Votre demande de récompense a bien été envoyée. Elle sera traitée prochainement par notre équipe.",
+      );
 
       await fetchRewardRedemptions();
       closeRewardModal();
@@ -1088,23 +1462,61 @@ export default function App() {
           </div>
 
           <div className="panel">
-            <h2>Mes demandes</h2>
+            <div className="section-header-with-tabs">
+              <div>
+                <h2>Mes demandes</h2>
+                <p className="muted">
+                  Retrouvez vos dossiers par statut et ouvrez chaque demande
+                  pour voir le détail.
+                </p>
+              </div>
+            </div>
+
+            <div className="customer-request-tabs">
+              {customerSubmissionTabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  className={`customer-request-tab ${activeSubmissionTab === tab.key ? "active" : ""}`}
+                  onClick={() => setActiveSubmissionTab(tab.key)}
+                >
+                  <span>{tab.label}</span>
+                  <strong>{submissionCounts[tab.key] || 0}</strong>
+                </button>
+              ))}
+            </div>
 
             <div className="submission-list">
               {submissions.length === 0 ? (
                 <p className="muted">Aucune demande envoyée pour le moment.</p>
+              ) : filteredSubmissions.length === 0 ? (
+                <p className="muted">
+                  Aucun dossier dans cet onglet pour le moment.
+                </p>
               ) : (
-                submissions.map((submission) => (
-                  <div key={submission.id} className="submission-item">
+                filteredSubmissions.map((submission) => (
+                  <button
+                    key={submission.id}
+                    type="button"
+                    className="submission-item submission-card-button"
+                    onClick={() => openSubmissionDetails(submission)}
+                  >
                     <div>
                       <strong>{submission.fuel}</strong>
                       <p className="muted">
                         Quantité : {submission.quantity} • Estimation :{" "}
                         {submission.estimated_points} pts
                       </p>
+                      <p className="muted">
+                        Envoyée le{" "}
+                        {new Date(submission.created_at).toLocaleDateString(
+                          "fr-FR",
+                        )}
+                      </p>
 
-                      {submission.admin_message ? (
-                        <p className="muted" style={{ marginTop: "8px" }}>
+                      {submission.status === "needs_info" &&
+                      submission.admin_message ? (
+                        <p className="submission-inline-alert">
                           Message de l’équipe : {submission.admin_message}
                         </p>
                       ) : null}
@@ -1114,8 +1526,11 @@ export default function App() {
                       <span className={getStatusClass(submission.status)}>
                         {getStatusLabel(submission.status)}
                       </span>
+                      <span className="submission-open-label">
+                        Voir le dossier
+                      </span>
                     </div>
-                  </div>
+                  </button>
                 ))
               )}
             </div>
@@ -1263,6 +1678,185 @@ export default function App() {
         </aside>
       </main>
 
+      {selectedSubmission ? (
+        <div className="modal-overlay" onClick={closeSubmissionDetails}>
+          <div
+            className="modal-card submission-detail-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="submission-detail-header">
+              <div>
+                <p className="topbar-subtitle">Dossier client</p>
+                <h2>{selectedSubmission.fuel}</h2>
+                <p className="muted">
+                  {getSubmissionStatusDescription(selectedSubmission.status)}
+                </p>
+              </div>
+              <span className={getStatusClass(selectedSubmission.status)}>
+                {getStatusLabel(selectedSubmission.status)}
+              </span>
+            </div>
+
+            <div className="submission-detail-grid">
+              <div className="submission-detail-box">
+                <span>Date d’envoi</span>
+                <strong>
+                  {new Date(selectedSubmission.created_at).toLocaleDateString(
+                    "fr-FR",
+                    {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric",
+                    },
+                  )}
+                </strong>
+              </div>
+              <div className="submission-detail-box">
+                <span>Quantité</span>
+                <strong>{selectedSubmission.quantity}</strong>
+              </div>
+              <div className="submission-detail-box">
+                <span>Points estimés</span>
+                <strong>{selectedSubmission.estimated_points} pts</strong>
+              </div>
+              <div className="submission-detail-box">
+                <span>Points validés</span>
+                <strong>{selectedSubmission.points_awarded || 0} pts</strong>
+              </div>
+            </div>
+
+            {selectedSubmission.admin_message ? (
+              <div className="admin-feedback-box">
+                <h3>Message de l’équipe</h3>
+                <p>{selectedSubmission.admin_message}</p>
+              </div>
+            ) : null}
+
+            {selectedSubmission.comments ? (
+              <div className="submission-detail-section">
+                <h3>Vos commentaires</h3>
+                <p className="muted preserve-linebreaks">
+                  {selectedSubmission.comments}
+                </p>
+              </div>
+            ) : null}
+
+            <div className="submission-detail-section">
+              <h3>Justificatifs du dossier</h3>
+              {normalizeDocuments(selectedSubmission.documents).length === 0 ? (
+                <p className="muted">Aucun document joint à cette demande.</p>
+              ) : (
+                <div className="submission-documents-list">
+                  {normalizeDocuments(selectedSubmission.documents).map(
+                    (doc) => {
+                      const cacheKey = `${doc.bucket || STORAGE_BUCKET}:${doc.file_path}`;
+                      const isOpening = loadingDocumentKey === cacheKey;
+
+                      return (
+                        <button
+                          key={doc.key}
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => openDocument(doc)}
+                        >
+                          {isOpening ? "Ouverture..." : `Voir ${doc.file_name}`}
+                        </button>
+                      );
+                    },
+                  )}
+                </div>
+              )}
+            </div>
+
+            {selectedSubmission.status === "needs_info" ? (
+              <div className="submission-completion-box">
+                <h3>Compléter mon dossier</h3>
+                <p className="muted">
+                  Ajoutez les éléments demandés par l’équipe. Une fois envoyés,
+                  votre dossier repassera en cours de traitement.
+                </p>
+
+                <div className="form-block">
+                  <label>Ajouter des justificatifs complémentaires</label>
+                  <input
+                    type="file"
+                    multiple
+                    onChange={handleCompletionFiles}
+                  />
+                  {completionFiles.length > 0 ? (
+                    <ul className="file-list">
+                      {completionFiles.map((file, index) => (
+                        <li key={`${file.name}-${index}`}>{file.name}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+
+                <div className="form-block">
+                  <label>Réponse ou précision à transmettre</label>
+                  <textarea
+                    rows="4"
+                    placeholder="Ajoutez une précision pour l’équipe si nécessaire"
+                    value={completionComment}
+                    onChange={(e) => setCompletionComment(e.target.value)}
+                  ></textarea>
+                </div>
+
+                {completionMessage ? (
+                  <p className="completion-error-message">
+                    {completionMessage}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="auth-buttons" style={{ marginTop: "24px" }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={closeSubmissionDetails}
+                disabled={isCompletingSubmission}
+              >
+                Fermer
+              </button>
+
+              {selectedSubmission.status === "needs_info" ? (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleCompleteSubmission}
+                  disabled={isCompletingSubmission}
+                >
+                  {isCompletingSubmission
+                    ? "Envoi..."
+                    : "Envoyer le complément"}
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {confirmationPopup.open ? (
+        <div className="success-popup-overlay" onClick={closeConfirmationPopup}>
+          <div
+            className="success-popup-card"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="success-popup-icon">✓</div>
+            <h2>{confirmationPopup.title}</h2>
+            <p>{confirmationPopup.description}</p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={closeConfirmationPopup}
+            >
+              Fermer
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {rewardModalOpen && selectedReward ? (
         <div className="modal-overlay" onClick={closeRewardModal}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
@@ -1389,8 +1983,8 @@ export default function App() {
                       fontSize: "14px",
                     }}
                   >
-                    Merci de transmettre votre RIB en version PDF, généré par
-                    la banque et au nom du titulaire du compte à rembourser.
+                    Merci de transmettre votre RIB en version PDF, généré par la
+                    banque et au nom du titulaire du compte à rembourser.
                   </div>
                 )}
 

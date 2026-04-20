@@ -20,20 +20,54 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#039;");
 }
 
+async function sendEmail(payload: {
+  to: string[];
+  subject: string;
+  html: string;
+}) {
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: MAIL_FROM,
+      to: payload.to,
+      reply_to: MAIL_REPLY_TO ? [MAIL_REPLY_TO] : undefined,
+      subject: payload.subject,
+      html: payload.html,
+    }),
+  });
+
+  const body = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`Erreur Resend: ${body}`);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
+    if (!RESEND_API_KEY) {
+      return new Response(
+        JSON.stringify({ error: "RESEND_API_KEY non configuré" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const { redemption } = await req.json();
 
     const fullName =
       `${redemption?.first_name || ""} ${redemption?.last_name || ""}`.trim() ||
-      "Non renseigné";
+      "Client";
 
-    const html = `
-      <div style="font-family: Arial, sans-serif; color: #101828;">
+    const adminHtml = `
+      <div style="font-family: Arial, sans-serif; color: #101828; line-height: 1.6;">
         <h2>Nouvelle demande de récompense</h2>
         <ul>
           <li><strong>Nom :</strong> ${escapeHtml(fullName)}</li>
@@ -45,28 +79,33 @@ serve(async (req) => {
       </div>
     `;
 
-    const resendResponse = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: MAIL_FROM,
-        to: [ADMIN_EMAIL],
-        reply_to: MAIL_REPLY_TO ? [MAIL_REPLY_TO] : undefined,
-        subject: "Nouvelle demande de récompense",
-        html,
-      }),
+    const customerHtml = `
+      <div style="font-family: Arial, sans-serif; color: #101828; line-height: 1.6;">
+        <h2>Votre demande de récompense a bien été envoyée</h2>
+        <p>Bonjour ${escapeHtml(fullName)},</p>
+        <p>Nous vous confirmons que votre demande de récompense a bien été reçue par notre équipe.</p>
+        <ul>
+          <li><strong>Récompense demandée :</strong> ${escapeHtml(redemption?.reward_title || "Non renseigné")}</li>
+          <li><strong>Points utilisés :</strong> ${redemption?.points_used ?? 0}</li>
+        </ul>
+        <p>Votre demande sera traitée dans les meilleurs délais. Vous recevrez un nouvel e-mail dès qu'elle aura été étudiée.</p>
+        <p>Vous pouvez également suivre son statut directement depuis votre espace fidélité.</p>
+        <p>Cordialement,<br>L'équipe Qlima</p>
+      </div>
+    `;
+
+    await sendEmail({
+      to: [ADMIN_EMAIL],
+      subject: "Nouvelle demande de récompense",
+      html: adminHtml,
     });
 
-    const resendData = await resendResponse.text();
-
-    if (!resendResponse.ok) {
-      return new Response(
-        JSON.stringify({ error: "Erreur Resend", details: resendData }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+    if (redemption?.email) {
+      await sendEmail({
+        to: [redemption.email],
+        subject: "Nous avons bien reçu votre demande de récompense",
+        html: customerHtml,
+      });
     }
 
     return new Response(JSON.stringify({ success: true }), {
