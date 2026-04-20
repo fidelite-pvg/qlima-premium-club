@@ -574,16 +574,45 @@ export default function App() {
         .filter(Boolean)
         .join("\n\n");
 
+      const clientUpdateTimestamp = new Date().toISOString();
+
       const { error } = await supabase
         .from("loyalty_submissions")
         .update({
           documents: [...existingDocuments, ...uploaded],
           comments: nextComments,
           status: "pending",
+          client_has_unread_update: true,
+          client_last_update_at: clientUpdateTimestamp,
+          reviewed_at: null,
+          reviewed_by: null,
         })
         .eq("id", selectedSubmission.id);
 
       if (error) throw error;
+
+      const { error: notifyAdminError } = await supabase.functions.invoke(
+        "notify-submission-updated-admin",
+        {
+          body: {
+            submission: {
+              ...selectedSubmission,
+              documents: [...existingDocuments, ...uploaded],
+              comments: nextComments,
+              status: "pending",
+              client_has_unread_update: true,
+              client_last_update_at: clientUpdateTimestamp,
+            },
+          },
+        },
+      );
+
+      if (notifyAdminError) {
+        console.error(
+          "Erreur envoi email admin après complément client :",
+          notifyAdminError.message,
+        );
+      }
 
       await fetchSubmissions();
       closeSubmissionDetails();
@@ -1472,16 +1501,18 @@ export default function App() {
               </div>
             </div>
 
-            <div className="customer-request-tabs">
+            <div className="request-tabs customer-request-tabs">
               {customerSubmissionTabs.map((tab) => (
                 <button
                   key={tab.key}
                   type="button"
-                  className={`customer-request-tab ${activeSubmissionTab === tab.key ? "active" : ""}`}
+                  className={`request-tab customer-request-tab ${activeSubmissionTab === tab.key ? "active" : ""}`}
                   onClick={() => setActiveSubmissionTab(tab.key)}
                 >
                   <span>{tab.label}</span>
-                  <strong>{submissionCounts[tab.key] || 0}</strong>
+                  <strong className="count">
+                    {submissionCounts[tab.key] || 0}
+                  </strong>
                 </button>
               ))}
             </div>

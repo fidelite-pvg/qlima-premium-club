@@ -17,12 +17,14 @@ create table if not exists public.reward_redemptions (
 
 alter table public.reward_redemptions enable row level security;
 
-create policy if not exists "Users can view their reward redemptions"
+drop policy if exists "Users can view their reward redemptions" on public.reward_redemptions;
+create policy "Users can view their reward redemptions"
   on public.reward_redemptions
   for select
   using (auth.uid() = user_id);
 
-create policy if not exists "Users can create their reward redemptions"
+drop policy if exists "Users can create their reward redemptions" on public.reward_redemptions;
+create policy "Users can create their reward redemptions"
   on public.reward_redemptions
   for insert
   with check (auth.uid() = user_id);

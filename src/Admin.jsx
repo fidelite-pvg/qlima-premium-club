@@ -133,6 +133,36 @@ export default function Admin({ session, onBack }) {
   useEffect(() => {
     fetchAllSubmissions();
     fetchRewardRedemptions();
+
+    const adminChannel = supabase
+      .channel("admin-live-updates")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "loyalty_submissions",
+        },
+        () => {
+          fetchAllSubmissions();
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "reward_redemptions",
+        },
+        () => {
+          fetchRewardRedemptions();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(adminChannel);
+    };
   }, []);
 
   const fetchRewardRedemptions = async () => {
@@ -312,6 +342,7 @@ export default function Admin({ session, onBack }) {
       reviewed_at: new Date().toISOString(),
       reviewed_by: session.user.email,
       points_awarded: status === "validated" ? submission.estimated_points : 0,
+      client_has_unread_update: false,
     };
 
     const { error } = await supabase
@@ -1086,9 +1117,16 @@ export default function Admin({ session, onBack }) {
                         </p>
                       </div>
 
-                      <span className={getStatusClass(submission.status)}>
-                        {getStatusLabel(submission.status)}
-                      </span>
+                      <div className="admin-card-status-group">
+                        <span className={getStatusClass(submission.status)}>
+                          {getStatusLabel(submission.status)}
+                        </span>
+                        {submission.client_has_unread_update ? (
+                          <span className="admin-update-chip">
+                            Client a modifié le dossier
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
 
                     <div
@@ -1140,6 +1178,15 @@ export default function Admin({ session, onBack }) {
                         <strong>Date :</strong>{" "}
                         {formatDateTime(submission.created_at)}
                       </p>
+                      {submission.client_last_update_at ? (
+                        <p
+                          className="muted admin-update-meta"
+                          style={{ marginBottom: "6px" }}
+                        >
+                          <strong>Dernière modification client :</strong>{" "}
+                          {formatDateTime(submission.client_last_update_at)}
+                        </p>
+                      ) : null}
                       {submission.comments ? (
                         <p className="muted" style={{ marginBottom: "6px" }}>
                           <strong>Commentaire client :</strong>{" "}
