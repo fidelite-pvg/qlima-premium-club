@@ -18,6 +18,10 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#039;");
 }
 
+function nl2br(value: string) {
+  return escapeHtml(value).replaceAll("\n", "<br>");
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -37,17 +41,42 @@ serve(async (req) => {
       `${redemption?.first_name || ""} ${redemption?.last_name || ""}`.trim() ||
       "Client";
 
+    const status = redemption?.status;
+
     const statusLabels: Record<string, string> = {
-      approved: "Validée ✅",
-      rejected: "Refusée ❌",
-      cancelled: "Annulée",
-      pending: "En attente",
+      approved: "validée ✅",
+      rejected: "refusée ❌",
+      needs_info: "à compléter 📋",
+      cancelled: "annulée",
+      pending: "en attente",
     };
 
-    const statusLabel = statusLabels[redemption?.status] ?? redemption?.status;
+    const statusLabel = statusLabels[status] ?? status;
+
+    const subjectMap: Record<string, string> = {
+      approved: `Votre demande de récompense a été validée`,
+      rejected: `Votre demande de récompense a été refusée`,
+      needs_info: `Votre dossier de récompense doit être complété`,
+    };
+
+    const subject = subjectMap[status] ??
+      `Votre demande de récompense "${redemption?.reward_title || ""}" — ${statusLabel}`;
+
+    const introMap: Record<string, string> = {
+      approved: "Bonne nouvelle, votre demande a été validée.",
+      rejected: "Après étude, votre demande n'a pas pu être acceptée.",
+      needs_info: "Notre équipe a besoin d'un complément pour traiter votre dossier.",
+    };
+
+    const intro = introMap[status] ?? "Le statut de votre demande a été mis à jour.";
+
+    const adminMessage = redemption?.admin_message?.trim();
+    const adminMessageBlock = adminMessage
+      ? `<p><strong>Message de notre équipe :</strong><br>${nl2br(adminMessage)}</p>`
+      : "";
 
     const approvedBlock =
-      redemption?.status === "approved"
+      status === "approved"
         ? `<p>Votre récompense va être traitée dans les meilleurs délais. Si un virement est prévu, il peut prendre jusqu'à 6 semaines.</p>`
         : "";
 
@@ -55,11 +84,12 @@ serve(async (req) => {
       <div style="font-family: Arial, sans-serif; color: #101828; line-height: 1.6;">
         <h2>Mise à jour de votre demande de récompense</h2>
         <p>Bonjour ${escapeHtml(fullName)},</p>
-        <p>Votre demande de récompense a été mise à jour.</p>
+        <p>${escapeHtml(intro)}</p>
         <p><strong>Récompense :</strong> ${escapeHtml(redemption?.reward_title || "")}</p>
         <p><strong>Statut :</strong> ${escapeHtml(statusLabel)}</p>
         ${approvedBlock}
-        <p>Connectez-vous à votre espace fidélité pour consulter le détail.</p>
+        ${adminMessageBlock}
+        <p>Connectez-vous à votre espace fidélité pour consulter le détail et, si nécessaire, compléter votre dossier.</p>
         <p>Cordialement,<br>L'équipe Qlima</p>
       </div>
     `;
@@ -73,7 +103,7 @@ serve(async (req) => {
       body: JSON.stringify({
         from: MAIL_FROM,
         to: [redemption.email],
-        subject: `Votre récompense "${redemption?.reward_title || ""}" — ${statusLabel}`,
+        subject,
         html,
       }),
     });

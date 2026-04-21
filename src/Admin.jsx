@@ -18,6 +18,7 @@ const submissionTabs = [
 
 const rewardTabs = [
   { key: "pending", label: "En attente" },
+  { key: "needs_info", label: "À compléter" },
   { key: "approved", label: "Traitées" },
   { key: "rejected", label: "Refusées" },
   { key: "cancelled", label: "Annulées" },
@@ -120,6 +121,7 @@ export default function Admin({ session, onBack }) {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [adminMessages, setAdminMessages] = useState({});
+  const [rewardAdminMessages, setRewardAdminMessages] = useState({});
   const [activeTab, setActiveTab] = useState("pending");
   const [rewardTab, setRewardTab] = useState("pending");
   const [sectionTab, setSectionTab] = useState("submissions");
@@ -182,9 +184,18 @@ export default function Admin({ session, onBack }) {
   const updateRewardStatus = async (item, status) => {
     setRewardMessage("");
 
+    const adminMessage = rewardAdminMessages[item.id] ?? item.admin_message ?? "";
+
+    const payload = {
+      status,
+      admin_message: adminMessage,
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: session.user.email,
+    };
+
     const { error } = await supabase
       .from("reward_redemptions")
-      .update({ status })
+      .update(payload)
       .eq("id", item.id);
 
     if (error) {
@@ -197,7 +208,7 @@ export default function Admin({ session, onBack }) {
       "notify-reward-status",
       {
         body: {
-          redemption: { ...item, status },
+          redemption: { ...item, ...payload },
         },
       },
     );
@@ -312,6 +323,8 @@ export default function Admin({ session, onBack }) {
         return "Refusée";
       case "cancelled":
         return "Annulée";
+      case "needs_info":
+        return "À compléter";
       default:
         return "En attente";
     }
@@ -323,6 +336,8 @@ export default function Admin({ session, onBack }) {
         return "status-chip status-validated";
       case "rejected":
         return "status-chip status-rejected";
+      case "needs_info":
+        return "status-chip status-needs-info";
       case "cancelled":
         return "status-chip status-needs-info";
       default:
@@ -413,14 +428,11 @@ export default function Admin({ session, onBack }) {
 
   const rewardCounts = useMemo(
     () => ({
-      pending: rewardRedemptions.filter((item) => item.status === "pending")
-        .length,
-      approved: rewardRedemptions.filter((item) => item.status === "approved")
-        .length,
-      rejected: rewardRedemptions.filter((item) => item.status === "rejected")
-        .length,
-      cancelled: rewardRedemptions.filter((item) => item.status === "cancelled")
-        .length,
+      pending: rewardRedemptions.filter((item) => item.status === "pending").length,
+      needs_info: rewardRedemptions.filter((item) => item.status === "needs_info").length,
+      approved: rewardRedemptions.filter((item) => item.status === "approved").length,
+      rejected: rewardRedemptions.filter((item) => item.status === "rejected").length,
+      cancelled: rewardRedemptions.filter((item) => item.status === "cancelled").length,
     }),
     [rewardRedemptions],
   );
@@ -1401,15 +1413,38 @@ export default function Admin({ session, onBack }) {
                       </div>
                     ) : null}
 
+                    <div className="form-block" style={{ marginTop: "16px" }}>
+                      <label>Message au client (optionnel)</label>
+                      <textarea
+                        rows={3}
+                        placeholder="Ex : Votre RIB est illisible, merci d'en envoyer un nouveau."
+                        value={rewardAdminMessages[item.id] ?? item.admin_message ?? ""}
+                        onChange={(e) =>
+                          setRewardAdminMessages((prev) => ({
+                            ...prev,
+                            [item.id]: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+
                     <div
                       className="auth-buttons"
-                      style={{ flexWrap: "wrap", marginTop: "20px" }}
+                      style={{ flexWrap: "wrap", marginTop: "12px" }}
                     >
                       <button
                         className="btn btn-primary"
                         onClick={() => updateRewardStatus(item, "approved")}
                       >
                         Valider
+                      </button>
+
+                      <button
+                        className="btn btn-secondary"
+                        style={{ background: "#f59e0b", color: "#fff", borderColor: "#f59e0b" }}
+                        onClick={() => updateRewardStatus(item, "needs_info")}
+                      >
+                        Demander un complément
                       </button>
 
                       <button
