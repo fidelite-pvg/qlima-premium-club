@@ -12,7 +12,7 @@ otp_length = 8
 
 [auth.email.smtp]
 host = "smtp.resend.com"
-port = 465
+port = 587
 user = "resend"
 pass = "env(RESEND_API_KEY)"
 admin_email = "fidelite@pvg.eu"
