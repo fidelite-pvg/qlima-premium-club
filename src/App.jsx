@@ -1688,6 +1688,20 @@ export default function App() {
           <div className="panel">
             <h2>Catalogue des récompenses</h2>
 
+            <div style={{
+              background: "#fff8e1",
+              border: "1px solid #f59e0b",
+              borderRadius: "8px",
+              padding: "12px 14px",
+              marginBottom: "16px",
+              fontSize: "13px",
+              color: "#92400e",
+              lineHeight: "1.5",
+            }}>
+              <strong>📅 Période de validité</strong><br />
+              Les récompenses sont valables uniquement du <strong>01/09/2026 au 30/06/2027</strong>. Chaque année, le programme de fidélité est révisé afin d'ajuster, ou non, ses offres.
+            </div>
+
             <div className="reward-list">
               {rewards.map((reward) => {
                 const available = userPoints >= reward.points;
