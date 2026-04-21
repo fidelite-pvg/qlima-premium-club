@@ -1,5 +1,21 @@
+[functions.notify-new-submission]
+enabled = true
+verify_jwt = false
+
 [functions.notify-submission-status]
 enabled = true
 verify_jwt = false
 import_map = "./functions/notify-submission-status/deno.json"
 entrypoint = "./functions/notify-submission-status/index.ts"
+
+[functions.notify-submission-updated-admin]
+enabled = true
+verify_jwt = false
+
+[functions.notify-reward-redemption]
+enabled = true
+verify_jwt = false
+
+[functions.notify-reward-status]
+enabled = true
+verify_jwt = false

@@ -17,16 +17,20 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#039;");
 }
 
+function nl2br(value: string) {
+  return escapeHtml(value).replaceAll("\n", "<br>");
+}
+
 function getStatusLabel(status?: string | null) {
   switch (status) {
     case "validated":
-      return "validée ✅";
+      return "validée";
     case "approved":
-      return "validée ✅";
+      return "validée";
     case "rejected":
-      return "refusée ❌";
+      return "refusée";
     case "needs_info":
-      return "à compléter ℹ️";
+      return "à compléter";
     case "cancelled":
       return "annulée";
     case "pending":
@@ -47,7 +51,18 @@ Deno.serve(async (req: Request) => {
     const body = await req.json();
     const submission = body?.submission;
 
-    if (!submission?.email) {
+    const customerEmail = String(submission?.email || "").trim().toLowerCase();
+
+    console.log("notify-submission-status called", {
+      customerEmail,
+      status: submission?.status,
+      fuel: submission?.fuel,
+      quantity: submission?.quantity,
+      estimated_points: submission?.estimated_points,
+      points_awarded: submission?.points_awarded,
+    });
+
+    if (!customerEmail) {
       return new Response(
         JSON.stringify({ error: "Email du client manquant" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -61,7 +76,7 @@ Deno.serve(async (req: Request) => {
     const adminMessage = submission.admin_message?.trim();
 
     const adminMessageBlock = adminMessage
-      ? `<p><strong>Message de notre équipe :</strong><br>${escapeHtml(adminMessage)}</p>`
+      ? `<p><strong>Message de notre équipe :</strong><br>${nl2br(adminMessage)}</p>`
       : "";
 
     const pointsBlock =
@@ -69,11 +84,20 @@ Deno.serve(async (req: Request) => {
         ? `<p><strong>Points attribués :</strong> ${escapeHtml(String(submission.points_awarded))} points</p>`
         : "";
 
+    const statusSpecificIntro =
+      submission.status === "needs_info"
+        ? "Notre équipe a besoin d’un complément pour poursuivre le traitement de votre dossier."
+        : submission.status === "rejected"
+          ? "Après étude, votre demande n’a pas pu être acceptée."
+          : submission.status === "validated"
+            ? "Bonne nouvelle, votre demande a été validée."
+            : "Le statut de votre demande a été mis à jour.";
+
     const html = `
       <div style="font-family: Arial, sans-serif; color: #192021; line-height: 1.6;">
         <h2>Votre demande de points a été ${escapeHtml(statusLabel)}</h2>
         <p>Bonjour ${escapeHtml(fullName)},</p>
-        <p>Le statut de votre demande a été mis à jour.</p>
+        <p>${escapeHtml(statusSpecificIntro)}</p>
         <ul>
           <li><strong>Produit :</strong> ${escapeHtml(submission.fuel || "Non renseigné")}</li>
           <li><strong>Quantité :</strong> ${escapeHtml(String(submission.quantity ?? 0))}</li>
@@ -95,14 +119,28 @@ Deno.serve(async (req: Request) => {
       },
       body: JSON.stringify({
         from: MAIL_FROM,
-        to: [submission.email],
+        to: [customerEmail],
         reply_to: MAIL_REPLY_TO ? [MAIL_REPLY_TO] : undefined,
-        subject: `Votre demande de points — ${statusLabel}`,
+        subject:
+          submission.status === "needs_info"
+            ? "Votre dossier doit être complété"
+            : submission.status === "validated"
+              ? "Votre demande de points a été validée"
+              : submission.status === "rejected"
+                ? "Votre demande de points a été refusée"
+                : `Votre demande de points — ${statusLabel}`,
         html,
       }),
     });
 
     const resendData = await resendResponse.text();
+
+    console.log("Resend response notify-submission-status", {
+      customerEmail,
+      status: submission?.status,
+      resendStatus: resendResponse.status,
+      resendData,
+    });
 
     if (!resendResponse.ok) {
       return new Response(
@@ -116,6 +154,7 @@ Deno.serve(async (req: Request) => {
       status: 200,
     });
   } catch (error) {
+    console.error("Erreur notify-submission-status :", error);
     return new Response(
       JSON.stringify({
         error: error instanceof Error ? error.message : "Erreur inconnue",

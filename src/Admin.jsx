@@ -342,7 +342,7 @@ export default function Admin({ session, onBack }) {
       reviewed_at: new Date().toISOString(),
       reviewed_by: session.user.email,
       points_awarded: status === "validated" ? submission.estimated_points : 0,
-      client_has_unread_update: false,
+      client_has_unread_update: true,
     };
 
     const { error } = await supabase

@@ -176,6 +176,11 @@ export default function App() {
   const [rewardPurchaseProofFile, setRewardPurchaseProofFile] = useState(null);
   const [isSubmittingReward, setIsSubmittingReward] = useState(false);
 
+  const [recoveryMode, setRecoveryMode] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [forgotEmail, setForgotEmail] = useState("");
+
   const [authForm, setAuthForm] = useState({
     firstName: "",
     lastName: "",
@@ -225,8 +230,13 @@ export default function App() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    } = supabase.auth.onAuthStateChange((event, newSession) => {
       if (isMounted) {
+        if (event === "PASSWORD_RECOVERY") {
+          setRecoveryMode(true);
+        } else if (event === "SIGNED_OUT") {
+          setRecoveryMode(false);
+        }
         setSession(newSession ?? null);
         setLoading(false);
       }
@@ -705,20 +715,20 @@ export default function App() {
     setMessage("");
   };
 
-  const resetPassword = async () => {
+  const resetPassword = async (e) => {
+    e.preventDefault();
     setMessage("");
 
-    if (!normalizedEmail) {
-      setMessage(
-        "Saisissez votre adresse e-mail pour réinitialiser votre mot de passe.",
-      );
+    const emailToReset = forgotEmail.trim().toLowerCase();
+    if (!emailToReset) {
+      setMessage("Saisissez votre adresse e-mail.");
       return;
     }
 
     const { error } = await supabase.auth.resetPasswordForEmail(
-      normalizedEmail,
+      emailToReset,
       {
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo: window.location.origin,
       },
     );
 
@@ -734,9 +744,38 @@ export default function App() {
       return;
     }
 
+    setForgotEmail("");
     setMessage(
-      "Si un compte existe avec cette adresse, un e-mail de réinitialisation du mot de passe a été envoyé.",
+      "Si un compte existe avec cette adresse, un e-mail de réinitialisation a été envoyé. Vérifiez votre boîte mail.",
     );
+  };
+
+  const updatePasswordAfterReset = async (e) => {
+    e.preventDefault();
+    setMessage("");
+
+    if (newPassword.length < 6) {
+      setMessage("Le mot de passe doit contenir au moins 6 caractères.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setMessage("Les deux mots de passe ne correspondent pas.");
+      return;
+    }
+
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    await supabase.auth.signOut();
+    setRecoveryMode(false);
+    setNewPassword("");
+    setConfirmPassword("");
+    setSession(null);
+    setMessage("Votre mot de passe a bien été mis à jour. Connectez-vous avec votre nouveau mot de passe.");
   };
 
   const signOut = async () => {
@@ -1116,6 +1155,46 @@ export default function App() {
     return <div className="center-screen">Chargement...</div>;
   }
 
+  if (recoveryMode) {
+    return (
+      <div className="center-screen" style={{ flexDirection: "column", gap: "16px", padding: "24px" }}>
+        <h2 style={{ marginBottom: "8px" }}>Nouveau mot de passe</h2>
+        <p className="muted" style={{ marginBottom: "16px" }}>
+          Choisissez un nouveau mot de passe pour votre compte.
+        </p>
+        <form
+          onSubmit={updatePasswordAfterReset}
+          style={{ display: "flex", flexDirection: "column", gap: "12px", width: "100%", maxWidth: "360px" }}
+        >
+          <input
+            type="password"
+            placeholder="Nouveau mot de passe"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            required
+            minLength={6}
+            className="input"
+            style={{ width: "100%" }}
+          />
+          <input
+            type="password"
+            placeholder="Confirmer le mot de passe"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+            minLength={6}
+            className="input"
+            style={{ width: "100%" }}
+          />
+          <button type="submit" className="btn btn-primary">
+            Confirmer le nouveau mot de passe
+          </button>
+          {message && <p className="muted">{message}</p>}
+        </form>
+      </div>
+    );
+  }
+
   if (!session) {
     return (
       <div className="page">
@@ -1165,6 +1244,41 @@ export default function App() {
 
             <div className="hero-right">
               <div className="auth-panel">
+                {mode === "forgot-password" ? (
+                  <>
+                    <h2>Mot de passe oublié</h2>
+                    <p className="muted">
+                      Saisissez votre adresse e-mail. Si un compte existe, vous recevrez un lien pour choisir un nouveau mot de passe.
+                    </p>
+                    <form onSubmit={resetPassword} style={{ marginTop: "16px" }}>
+                      <div className="form-block">
+                        <label>Adresse e-mail</label>
+                        <input
+                          type="email"
+                          value={forgotEmail}
+                          onChange={(e) => setForgotEmail(e.target.value)}
+                          placeholder="votre@email.com"
+                          required
+                          autoFocus
+                        />
+                      </div>
+                      <div className="auth-buttons" style={{ marginTop: "16px" }}>
+                        <button type="submit" className="btn btn-primary">
+                          Envoyer le lien
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => { setMode("login"); setMessage(""); setForgotEmail(""); }}
+                        >
+                          Retour
+                        </button>
+                      </div>
+                      {message && <p className="muted" style={{ marginTop: "12px" }}>{message}</p>}
+                    </form>
+                  </>
+                ) : (
+                  <>
                 <h2>{mode === "login" ? "Accès client" : "Créer un compte"}</h2>
                 <p className="muted">
                   {mode === "login"
@@ -1311,7 +1425,7 @@ export default function App() {
                       <button
                         type="button"
                         className="btn btn-secondary"
-                        onClick={resetPassword}
+                        onClick={() => { setMode("forgot-password"); setMessage(""); }}
                       >
                         Mot de passe oublié
                       </button>
@@ -1320,6 +1434,8 @@ export default function App() {
 
                   {message ? <p className="muted">{message}</p> : null}
                 </form>
+                  </>
+                )}
               </div>
             </div>
           </div>

@@ -42,6 +42,13 @@ async function sendEmail(payload: {
 
   const body = await response.text();
 
+  console.log("Resend response", {
+    to: payload.to,
+    subject: payload.subject,
+    status: response.status,
+    body,
+  });
+
   if (!response.ok) {
     throw new Error(`Erreur Resend: ${body}`);
   }
@@ -62,16 +69,26 @@ serve(async (req) => {
 
     const { submission } = await req.json();
 
+    const customerEmail = String(submission?.email || "").trim().toLowerCase();
     const fullName =
       `${submission?.first_name || ""} ${submission?.last_name || ""}`.trim() ||
       "Client";
+
+    console.log("notify-new-submission called", {
+      customerEmail,
+      fullName,
+      fuel: submission?.fuel,
+      quantity: submission?.quantity,
+      estimated_points: submission?.estimated_points,
+      status: submission?.status,
+    });
 
     const adminHtml = `
       <div style="font-family: Arial, sans-serif; color: #101828; line-height: 1.6;">
         <h2>Nouvelle demande de validation de points</h2>
         <ul>
           <li><strong>Nom :</strong> ${escapeHtml(fullName)}</li>
-          <li><strong>Email :</strong> ${escapeHtml(submission?.email || "Non renseigné")}</li>
+          <li><strong>Email :</strong> ${escapeHtml(customerEmail || "Non renseigné")}</li>
           <li><strong>Produit :</strong> ${escapeHtml(submission?.fuel || submission?.product_name || "Non renseigné")}</li>
           <li><strong>Quantité :</strong> ${submission?.quantity ?? ""}</li>
           <li><strong>Points estimés :</strong> ${submission?.estimated_points ?? 0}</li>
@@ -96,25 +113,49 @@ serve(async (req) => {
       </div>
     `;
 
+    let adminSent = false;
+    let customerSent = false;
+    let customerError = "";
+
     await sendEmail({
       to: [ADMIN_EMAIL],
       subject: "Nouvelle demande de points",
       html: adminHtml,
     });
+    adminSent = true;
 
-    if (submission?.email) {
-      await sendEmail({
-        to: [submission.email],
-        subject: "Nous avons bien reçu votre demande de points",
-        html: customerHtml,
-      });
+    if (customerEmail) {
+      try {
+        await sendEmail({
+          to: [customerEmail],
+          subject: "Nous avons bien reçu votre demande de points",
+          html: customerHtml,
+        });
+        customerSent = true;
+      } catch (error) {
+        customerError =
+          error instanceof Error ? error.message : "Erreur inconnue";
+        console.error("Erreur envoi mail client nouvelle demande :", customerError);
+      }
+    } else {
+      customerError = "Email client manquant";
+      console.error("Email client manquant dans notify-new-submission");
     }
 
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 200,
-    });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        adminSent,
+        customerSent,
+        customerError,
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: customerSent || !customerEmail ? 200 : 207,
+      },
+    );
   } catch (error) {
+    console.error("Erreur notify-new-submission :", error);
     return new Response(
       JSON.stringify({
         error: error instanceof Error ? error.message : "Erreur inconnue",
