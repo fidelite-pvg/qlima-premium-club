@@ -147,6 +147,7 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState("login");
+  const [authPanelOpen, setAuthPanelOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [selectedReward, setSelectedReward] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState([]);
@@ -1295,6 +1296,7 @@ export default function App() {
                     onClick={() => {
                       setMode("login");
                       setMessage("");
+                      setAuthPanelOpen(true);
                     }}
                   >
                     Connexion
@@ -1307,12 +1309,14 @@ export default function App() {
                     onClick={() => {
                       setMode("register");
                       setMessage("");
+                      setAuthPanelOpen(true);
                     }}
                   >
                     Inscription
                   </button>
                 </div>
 
+                <div className={`auth-form-wrapper${authPanelOpen ? " auth-form-wrapper--open" : ""}`}>
                 <form onSubmit={mode === "login" ? signIn : signUp}>
                   {mode === "register" && (
                     <>
@@ -1434,6 +1438,7 @@ export default function App() {
 
                   {message ? <p className="muted">{message}</p> : null}
                 </form>
+                </div>
                   </>
                 )}
               </div>
@@ -1465,9 +1470,9 @@ export default function App() {
         </div>
 
         <div className="topbar-right">
-          <span className="points-chip">{userPoints} points validés</span>
+          <span className="points-chip topbar-points-chip">{userPoints} points validés</span>
           <img src="/qlima-logo.png" alt="Qlima" className="topbar-logo" />
-          <button className="btn btn-secondary" onClick={signOut}>
+          <button className="btn btn-secondary topbar-signout" onClick={signOut}>
             Déconnexion
           </button>
         </div>
@@ -1827,7 +1832,7 @@ export default function App() {
           <div className="panel forest-panel">
             <h2>Informations utiles</h2>
             <ul className="info-list">
-              <li>Offre valable du 01/09/2025 au 30/06/2026</li>
+              <li>Offre valable du 01/07/2026 au 30/06/2027</li>
               <li>
                 PVG France – 200 Avenue de la Mare Sansoure, Immeuble B2, 76650
                 Petit-Couronne
@@ -1838,6 +1843,12 @@ export default function App() {
           </div>
         </aside>
       </main>
+
+      <div className="mobile-signout-bar">
+        <button className="btn btn-secondary" onClick={signOut}>
+          Déconnexion
+        </button>
+      </div>
 
       {selectedSubmission ? (
         <div className="modal-overlay" onClick={closeSubmissionDetails}>
