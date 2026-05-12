@@ -185,6 +185,7 @@ export default function App() {
   const [isSubmittingReward, setIsSubmittingReward] = useState(false);
   const [deleteAccountStep, setDeleteAccountStep] = useState(0);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState("");
 
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [newPassword, setNewPassword] = useState("");
@@ -819,6 +820,7 @@ export default function App() {
 
   const deleteAccount = async () => {
     setIsDeletingAccount(true);
+    setDeleteAccountError("");
     try {
       const { data: { session: currentSession } } = await supabase.auth.getSession();
       const { error } = await supabase.functions.invoke("delete-account", {
@@ -826,9 +828,12 @@ export default function App() {
       });
       if (error) throw error;
       setDeleteAccountStep(0);
+      setMode("register");
+      setAuthPanelOpen(true);
       await supabase.auth.signOut();
     } catch (err) {
       console.error("Erreur suppression compte :", err);
+      setDeleteAccountError("Une erreur est survenue. Veuillez réessayer ou contacter le support.");
     } finally {
       setIsDeletingAccount(false);
     }
@@ -2136,7 +2141,7 @@ export default function App() {
       ) : null}
 
       {deleteAccountStep > 0 ? (
-        <div className="modal-overlay" onClick={() => setDeleteAccountStep(0)}>
+        <div className="modal-overlay" onClick={() => { setDeleteAccountStep(0); setDeleteAccountError(""); }}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             {deleteAccountStep === 1 ? (
               <>
@@ -2172,11 +2177,16 @@ export default function App() {
                 <p className="muted" style={{ marginTop: "12px" }}>
                   Cette action est <strong>irréversible</strong>. Votre compte et toutes vos données seront supprimés définitivement. Êtes-vous certain(e) ?
                 </p>
+                {deleteAccountError ? (
+                  <p style={{ marginTop: "16px", color: "#b42318", fontSize: "14px" }}>
+                    {deleteAccountError}
+                  </p>
+                ) : null}
                 <div className="auth-buttons" style={{ marginTop: "28px" }}>
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    onClick={() => setDeleteAccountStep(0)}
+                    onClick={() => { setDeleteAccountStep(0); setDeleteAccountError(""); }}
                     disabled={isDeletingAccount}
                   >
                     Annuler
