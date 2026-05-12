@@ -171,6 +171,13 @@ export default function App() {
   const [rewardForm, setRewardForm] = useState({
     serialNumber: "",
     warrantyConfirmed: false,
+    deliveryFirstName: "",
+    deliveryLastName: "",
+    deliveryEmail: "",
+    deliveryPhone: "",
+    deliveryAddress: "",
+    deliveryPostalCode: "",
+    deliveryCity: "",
   });
   const [rewardInvoiceFile, setRewardInvoiceFile] = useState(null);
   const [rewardBankDetailsFile, setRewardBankDetailsFile] = useState(null);
@@ -301,6 +308,9 @@ export default function App() {
 
   const latestRedemption = rewardRedemptions[0] || null;
   const isWarrantyReward = selectedReward?.code === "extended_warranty_1y";
+  const DELIVERY_REWARD_CODES = ["electric_pump", "sre_4035_c", "sre_9046_c2"];
+  const isDeliveryReward =
+    selectedReward && DELIVERY_REWARD_CODES.includes(selectedReward.code);
 
   const submissionTabs = [
     { key: "pending", label: "En attente" },
@@ -429,6 +439,13 @@ export default function App() {
     setRewardForm({
       serialNumber: "",
       warrantyConfirmed: false,
+      deliveryFirstName: "",
+      deliveryLastName: "",
+      deliveryEmail: "",
+      deliveryPhone: "",
+      deliveryAddress: "",
+      deliveryPostalCode: "",
+      deliveryCity: "",
     });
     setRewardInvoiceFile(null);
     setRewardBankDetailsFile(null);
@@ -442,6 +459,13 @@ export default function App() {
     setRewardForm({
       serialNumber: "",
       warrantyConfirmed: false,
+      deliveryFirstName: "",
+      deliveryLastName: "",
+      deliveryEmail: "",
+      deliveryPhone: "",
+      deliveryAddress: "",
+      deliveryPostalCode: "",
+      deliveryCity: "",
     });
     setRewardInvoiceFile(null);
     setRewardBankDetailsFile(null);
@@ -988,6 +1012,7 @@ export default function App() {
 
     const isRefundReward = selectedReward.type === "refund";
     const isWarrantyReward = selectedReward.code === "extended_warranty_1y";
+    const isDeliveryReward = DELIVERY_REWARD_CODES.includes(selectedReward.code);
 
     const requiresPurchaseProof =
       selectedReward.code === "refund_kristal_shine" ||
@@ -1040,6 +1065,37 @@ export default function App() {
         setRewardModalMessage(
           "Cette récompense est réservée aux appareils toujours sous garantie. Merci de confirmer cette information.",
         );
+        return;
+      }
+    }
+
+    if (isDeliveryReward) {
+      if (!rewardForm.deliveryFirstName.trim()) {
+        setRewardModalMessage("Merci de renseigner votre prénom.");
+        return;
+      }
+      if (!rewardForm.deliveryLastName.trim()) {
+        setRewardModalMessage("Merci de renseigner votre nom.");
+        return;
+      }
+      if (!rewardForm.deliveryEmail.trim()) {
+        setRewardModalMessage("Merci de renseigner votre adresse e-mail.");
+        return;
+      }
+      if (!rewardForm.deliveryPhone.trim()) {
+        setRewardModalMessage("Merci de renseigner votre numéro de téléphone.");
+        return;
+      }
+      if (!rewardForm.deliveryAddress.trim()) {
+        setRewardModalMessage("Merci de renseigner votre adresse postale.");
+        return;
+      }
+      if (!rewardForm.deliveryPostalCode.trim()) {
+        setRewardModalMessage("Merci de renseigner votre code postal.");
+        return;
+      }
+      if (!rewardForm.deliveryCity.trim()) {
+        setRewardModalMessage("Merci de renseigner votre ville.");
         return;
       }
     }
@@ -1097,6 +1153,27 @@ export default function App() {
         warranty_confirmed: isWarrantyReward
           ? rewardForm.warrantyConfirmed
           : false,
+        delivery_first_name: isDeliveryReward
+          ? rewardForm.deliveryFirstName.trim()
+          : null,
+        delivery_last_name: isDeliveryReward
+          ? rewardForm.deliveryLastName.trim()
+          : null,
+        delivery_email: isDeliveryReward
+          ? rewardForm.deliveryEmail.trim()
+          : null,
+        delivery_phone: isDeliveryReward
+          ? rewardForm.deliveryPhone.trim()
+          : null,
+        delivery_address: isDeliveryReward
+          ? rewardForm.deliveryAddress.trim()
+          : null,
+        delivery_postal_code: isDeliveryReward
+          ? rewardForm.deliveryPostalCode.trim()
+          : null,
+        delivery_city: isDeliveryReward
+          ? rewardForm.deliveryCity.trim()
+          : null,
         supporting_documents: [
           uploadedInvoice,
           uploadedBankDetails,
@@ -2106,6 +2183,111 @@ export default function App() {
                   >
                     Je confirme que l’appareil est toujours sous garantie.
                   </label>
+                </div>
+              </div>
+            ) : null}
+
+            {isDeliveryReward ? (
+              <div className="refund-fields">
+                <div
+                  style={{
+                    marginTop: "12px",
+                    padding: "12px",
+                    borderRadius: "10px",
+                    background: "#f8f9fb",
+                    color: "#475467",
+                    fontSize: "14px",
+                  }}
+                >
+                  Pour vous faire livrer ce produit, merci de renseigner vos
+                  coordonnées ci-dessous.
+                </div>
+
+                <div className="form-block">
+                  <label>Prénom</label>
+                  <input
+                    type="text"
+                    value={rewardForm.deliveryFirstName}
+                    onChange={(e) =>
+                      handleRewardFormChange("deliveryFirstName", e.target.value)
+                    }
+                    placeholder="Votre prénom"
+                  />
+                </div>
+
+                <div className="form-block">
+                  <label>Nom</label>
+                  <input
+                    type="text"
+                    value={rewardForm.deliveryLastName}
+                    onChange={(e) =>
+                      handleRewardFormChange("deliveryLastName", e.target.value)
+                    }
+                    placeholder="Votre nom"
+                  />
+                </div>
+
+                <div className="form-block">
+                  <label>Adresse e-mail</label>
+                  <input
+                    type="email"
+                    value={rewardForm.deliveryEmail}
+                    onChange={(e) =>
+                      handleRewardFormChange("deliveryEmail", e.target.value)
+                    }
+                    placeholder="votre@email.com"
+                  />
+                </div>
+
+                <div className="form-block">
+                  <label>Numéro de téléphone</label>
+                  <input
+                    type="tel"
+                    value={rewardForm.deliveryPhone}
+                    onChange={(e) =>
+                      handleRewardFormChange("deliveryPhone", e.target.value)
+                    }
+                    placeholder="0612345678"
+                  />
+                </div>
+
+                <div className="form-block">
+                  <label>Adresse postale</label>
+                  <input
+                    type="text"
+                    value={rewardForm.deliveryAddress}
+                    onChange={(e) =>
+                      handleRewardFormChange("deliveryAddress", e.target.value)
+                    }
+                    placeholder="Numéro et nom de rue"
+                  />
+                </div>
+
+                <div className="form-block">
+                  <label>Code postal</label>
+                  <input
+                    type="text"
+                    value={rewardForm.deliveryPostalCode}
+                    onChange={(e) =>
+                      handleRewardFormChange(
+                        "deliveryPostalCode",
+                        e.target.value,
+                      )
+                    }
+                    placeholder="75000"
+                  />
+                </div>
+
+                <div className="form-block">
+                  <label>Ville</label>
+                  <input
+                    type="text"
+                    value={rewardForm.deliveryCity}
+                    onChange={(e) =>
+                      handleRewardFormChange("deliveryCity", e.target.value)
+                    }
+                    placeholder="Votre ville"
+                  />
                 </div>
               </div>
             ) : null}
