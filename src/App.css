@@ -1246,13 +1246,23 @@ textarea:focus {
 
   .hero-logo {
     position: absolute;
-    top: 24px;
-    right: 20px;
-    width: 100px;
+    top: 20px;
+    right: 18px;
+    width: 80px;
   }
 
   .hero-shape {
     padding-top: 4px;
+    padding-right: 100px;
+  }
+
+  .hero-shape h1 {
+    font-size: 26px;
+    margin-bottom: 8px;
+  }
+
+  .hero-shape p {
+    font-size: 15px;
   }
 
   .hero-content {
