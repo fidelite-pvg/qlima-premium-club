@@ -183,6 +183,8 @@ export default function App() {
   const [rewardBankDetailsFile, setRewardBankDetailsFile] = useState(null);
   const [rewardPurchaseProofFile, setRewardPurchaseProofFile] = useState(null);
   const [isSubmittingReward, setIsSubmittingReward] = useState(false);
+  const [deleteAccountStep, setDeleteAccountStep] = useState(0);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [newPassword, setNewPassword] = useState("");
@@ -813,6 +815,23 @@ export default function App() {
     setRewardModalMessage("");
     setRewardInvoiceFile(null);
     setRewardBankDetailsFile(null);
+  };
+
+  const deleteAccount = async () => {
+    setIsDeletingAccount(true);
+    try {
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      const { error } = await supabase.functions.invoke("delete-account", {
+        headers: { Authorization: `Bearer ${currentSession.access_token}` },
+      });
+      if (error) throw error;
+      setDeleteAccountStep(0);
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error("Erreur suppression compte :", err);
+    } finally {
+      setIsDeletingAccount(false);
+    }
   };
 
   const fetchSubmissions = async () => {
@@ -1918,6 +1937,16 @@ export default function App() {
               <li>02 32 96 07 70</li>
             </ul>
           </div>
+
+          <div className="delete-account-zone">
+            <button
+              type="button"
+              className="delete-account-link"
+              onClick={() => setDeleteAccountStep(1)}
+            >
+              Supprimer mon compte
+            </button>
+          </div>
         </aside>
       </main>
 
@@ -2102,6 +2131,67 @@ export default function App() {
             >
               Fermer
             </button>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteAccountStep > 0 ? (
+        <div className="modal-overlay" onClick={() => setDeleteAccountStep(0)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            {deleteAccountStep === 1 ? (
+              <>
+                <h2>Supprimer mon compte</h2>
+                <p className="muted" style={{ marginTop: "12px" }}>
+                  Vous êtes sur le point de supprimer votre compte Qlima Premium Club. Cette action entraîne la suppression définitive de&nbsp;:
+                </p>
+                <ul className="muted" style={{ paddingLeft: "20px", marginTop: "8px", lineHeight: "1.8" }}>
+                  <li>Votre accès à l'espace fidélité</li>
+                  <li>Vos points et l'historique de vos dossiers</li>
+                  <li>Toutes vos données personnelles</li>
+                </ul>
+                <div className="auth-buttons" style={{ marginTop: "28px" }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setDeleteAccountStep(0)}
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    onClick={() => setDeleteAccountStep(2)}
+                  >
+                    Continuer
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2>Confirmer la suppression</h2>
+                <p className="muted" style={{ marginTop: "12px" }}>
+                  Cette action est <strong>irréversible</strong>. Votre compte et toutes vos données seront supprimés définitivement. Êtes-vous certain(e) ?
+                </p>
+                <div className="auth-buttons" style={{ marginTop: "28px" }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setDeleteAccountStep(0)}
+                    disabled={isDeletingAccount}
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    onClick={deleteAccount}
+                    disabled={isDeletingAccount}
+                  >
+                    {isDeletingAccount ? "Suppression..." : "Supprimer définitivement"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       ) : null}

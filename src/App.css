@@ -1476,3 +1476,46 @@ textarea:focus {
   font-size: 14px;
   font-weight: 500;
 }
+
+.delete-account-zone {
+  display: flex;
+  justify-content: center;
+  padding: 24px 20px 40px;
+}
+
+.delete-account-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 13px;
+  color: var(--qlima-muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.delete-account-link:hover {
+  color: #b42318;
+}
+
+.btn-danger {
+  background-color: #b42318;
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 12px 24px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: #922012;
+}
+
+.btn-danger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
