@@ -1413,6 +1413,51 @@ export default function Admin({ session, onBack }) {
                       </div>
                     ) : null}
 
+                    {["electric_pump", "sre_4035_c", "sre_9046_c2"].includes(
+                      item.reward_code,
+                    ) ? (
+                      <div
+                        style={{
+                          marginTop: "20px",
+                          padding: "14px",
+                          borderRadius: "10px",
+                          background: "#f8f9fb",
+                        }}
+                      >
+                        <p
+                          className="muted"
+                          style={{ marginBottom: "10px", fontWeight: 600 }}
+                        >
+                          Adresse de livraison
+                        </p>
+                        <p className="muted" style={{ marginBottom: "4px" }}>
+                          <strong>Nom :</strong>{" "}
+                          {item.delivery_first_name || "—"}{" "}
+                          {item.delivery_last_name || ""}
+                        </p>
+                        <p className="muted" style={{ marginBottom: "4px" }}>
+                          <strong>E-mail :</strong>{" "}
+                          {item.delivery_email || "—"}
+                        </p>
+                        <p className="muted" style={{ marginBottom: "4px" }}>
+                          <strong>Téléphone :</strong>{" "}
+                          {item.delivery_phone || "—"}
+                        </p>
+                        <p className="muted" style={{ marginBottom: "4px" }}>
+                          <strong>Adresse :</strong>{" "}
+                          {item.delivery_address || "—"}
+                        </p>
+                        <p className="muted" style={{ marginBottom: "4px" }}>
+                          <strong>Code postal :</strong>{" "}
+                          {item.delivery_postal_code || "—"}
+                        </p>
+                        <p className="muted" style={{ marginBottom: 0 }}>
+                          <strong>Ville :</strong>{" "}
+                          {item.delivery_city || "—"}
+                        </p>
+                      </div>
+                    ) : null}
+
                     <div className="form-block" style={{ marginTop: "16px" }}>
                       <label>Message au client (optionnel)</label>
                       <textarea
