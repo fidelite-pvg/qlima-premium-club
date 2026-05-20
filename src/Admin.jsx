@@ -1391,16 +1391,19 @@ export default function Admin({ session, onBack }) {
                       </div>
                     ) : null}
 
-                    {item.reward_code === "extended_warranty_1y" ? (
+                    {(item.reward_code === "extended_warranty_1y" ||
+                      item.reward_code === "lifetime_warranty") ? (
                       <div style={{ marginTop: "20px" }}>
                         <p className="muted" style={{ marginBottom: "6px" }}>
                           <strong>Numéro de série :</strong>{" "}
                           {item.serial_number || "Non renseigné"}
                         </p>
-                        <p className="muted" style={{ marginBottom: "6px" }}>
-                          <strong>Appareil encore sous garantie :</strong>{" "}
-                          {item.warranty_confirmed ? "Oui" : "Non"}
-                        </p>
+                        {item.reward_code === "extended_warranty_1y" ? (
+                          <p className="muted" style={{ marginBottom: "6px" }}>
+                            <strong>Appareil encore sous garantie :</strong>{" "}
+                            {item.warranty_confirmed ? "Oui" : "Non"}
+                          </p>
+                        ) : null}
                         <div style={{ marginTop: "10px" }}>
                           <p className="muted" style={{ marginBottom: "10px" }}>
                             <strong>Facture :</strong>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import { supabase } from "./lib/supabase";
 import Admin from "./Admin";
@@ -97,6 +97,8 @@ const fuels = [
   { name: "Pure 20 L", points: 1 },
 ];
 
+const LIFETIME_WARRANTY_FUELS = ["Kristal Shine", "Bright 20 L"];
+
 const rewards = [
   {
     code: "extended_warranty_1y",
@@ -141,7 +143,49 @@ const rewards = [
     title: "Un poêle à combustible liquide SRE 9046 C-2 offert",
     type: "standard",
   },
+  {
+    code: "lifetime_warranty",
+    points: 0,
+    title: "Garantie à vie de votre appareil",
+    type: "lifetime_warranty",
+  },
 ];
+
+function FileInput({ id, accept, multiple, onChange, fileName }) {
+  const inputRef = useRef(null);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+      <input
+        ref={inputRef}
+        id={id}
+        type="file"
+        accept={accept}
+        multiple={multiple}
+        onChange={onChange}
+        style={{ display: "none" }}
+      />
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        style={{
+          padding: "6px 14px",
+          border: "1px solid #d0d5dd",
+          borderRadius: "8px",
+          background: "#fff",
+          cursor: "pointer",
+          fontSize: "14px",
+          color: "#344054",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {multiple ? "Choisir des fichiers" : "Choisir un fichier"}
+      </button>
+      <span style={{ fontSize: "13px", color: fileName ? "#344054" : "#98A2B3" }}>
+        {fileName || "Aucun fichier sélectionné"}
+      </span>
+    </div>
+  );
+}
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -301,8 +345,28 @@ export default function App() {
     return Math.max(earnedPoints - spentPoints, 0);
   }, [submissions, spentPoints]);
 
+  const lifetimeWarrantyEligibility = useMemo(() => {
+    const validated = submissions.filter((s) => s.status === "validated");
+    if (validated.length === 0) {
+      return { eligible: false, count: 0, disqualified: false };
+    }
+    const hasOtherFuel = validated.some(
+      (s) => !LIFETIME_WARRANTY_FUELS.includes(s.fuel),
+    );
+    if (hasOtherFuel) {
+      return { eligible: false, count: 0, disqualified: true };
+    }
+    const totalBidons = validated.reduce((sum, s) => sum + (s.quantity || 0), 0);
+    return { eligible: totalBidons >= 6, count: totalBidons, disqualified: false };
+  }, [submissions]);
+
   const nextReward = useMemo(() => {
-    return rewards.find((reward) => reward.points > userPoints) || null;
+    return (
+      rewards.find(
+        (reward) =>
+          reward.type !== "lifetime_warranty" && reward.points > userPoints,
+      ) || null
+    );
   }, [userPoints]);
 
   const progressPercent = nextReward
@@ -310,7 +374,9 @@ export default function App() {
     : 100;
 
   const latestRedemption = rewardRedemptions[0] || null;
-  const isWarrantyReward = selectedReward?.code === "extended_warranty_1y";
+  const isWarrantyReward =
+    selectedReward?.code === "extended_warranty_1y" ||
+    selectedReward?.code === "lifetime_warranty";
   const DELIVERY_REWARD_CODES = ["electric_pump", "sre_4035_c", "sre_9046_c2"];
   const isDeliveryReward =
     selectedReward && DELIVERY_REWARD_CODES.includes(selectedReward.code);
@@ -1035,7 +1101,9 @@ export default function App() {
     if (!session?.user || !selectedReward) return;
 
     const isRefundReward = selectedReward.type === "refund";
-    const isWarrantyReward = selectedReward.code === "extended_warranty_1y";
+    const isWarrantyReward =
+      selectedReward.code === "extended_warranty_1y" ||
+      selectedReward.code === "lifetime_warranty";
     const isDeliveryReward = DELIVERY_REWARD_CODES.includes(selectedReward.code);
 
     const requiresPurchaseProof =
@@ -1085,7 +1153,10 @@ export default function App() {
         return;
       }
 
-      if (!rewardForm.warrantyConfirmed) {
+      if (
+        selectedReward.code !== "lifetime_warranty" &&
+        !rewardForm.warrantyConfirmed
+      ) {
         setRewardModalMessage(
           "Cette récompense est réservée aux appareils toujours sous garantie. Merci de confirmer cette information.",
         );
@@ -1175,7 +1246,9 @@ export default function App() {
         bank_account_holder: null,
         serial_number: isWarrantyReward ? rewardForm.serialNumber.trim() : null,
         warranty_confirmed: isWarrantyReward
-          ? rewardForm.warrantyConfirmed
+          ? selectedReward.code === "lifetime_warranty"
+            ? true
+            : rewardForm.warrantyConfirmed
           : false,
         delivery_first_name: isDeliveryReward
           ? rewardForm.deliveryFirstName.trim()
@@ -1673,7 +1746,7 @@ export default function App() {
 
               <div className="form-block">
                 <label>Déposer les justificatifs</label>
-                <input type="file" multiple onChange={handleFiles} />
+                <FileInput multiple onChange={handleFiles} fileName={uploadedFiles.length > 0 ? `${uploadedFiles.length} fichier(s) sélectionné(s)` : ""} />
 
                 {uploadedFiles.length > 0 && (
                   <ul className="file-list">
@@ -1810,6 +1883,60 @@ export default function App() {
 
             <div className="reward-list">
               {rewards.map((reward) => {
+                if (reward.code === "lifetime_warranty") {
+                  const { eligible, count, disqualified } =
+                    lifetimeWarrantyEligibility;
+                  const progressPct = Math.min((count / 6) * 100, 100);
+                  return (
+                    <div
+                      key={reward.code}
+                      className={`reward-item ${eligible ? "available" : ""}`}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <strong>{reward.title}</strong>
+                        {disqualified ? (
+                          <p className="muted" style={{ color: "#b42318", marginTop: "4px" }}>
+                            Vous avez soumis un combustible non éligible à cette offre (réservée au Kristal Shine et au Bright 20 L uniquement).
+                          </p>
+                        ) : (
+                          <>
+                            <p className="muted" style={{ marginTop: "4px" }}>
+                              {count}/6 bidons validés — Kristal Shine ou Bright 20 L exclusivement
+                            </p>
+                            <div
+                              style={{
+                                marginTop: "6px",
+                                height: "6px",
+                                borderRadius: "99px",
+                                background: "#e5e7eb",
+                                overflow: "hidden",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  height: "100%",
+                                  width: `${progressPct}%`,
+                                  background: eligible ? "#16a34a" : "#2e6fdf",
+                                  borderRadius: "99px",
+                                  transition: "width 0.3s",
+                                }}
+                              />
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        className={`btn ${eligible ? "btn-primary" : "btn-secondary"}`}
+                        disabled={!eligible}
+                        onClick={() => openRewardModal(reward)}
+                      >
+                        {eligible ? "Choisir" : "Indisponible"}
+                      </button>
+                    </div>
+                  );
+                }
+
                 const available = userPoints >= reward.points;
 
                 return (
@@ -2061,11 +2188,7 @@ export default function App() {
 
                 <div className="form-block">
                   <label>Ajouter des justificatifs complémentaires</label>
-                  <input
-                    type="file"
-                    multiple
-                    onChange={handleCompletionFiles}
-                  />
+                  <FileInput multiple onChange={handleCompletionFiles} fileName={completionFiles.length > 0 ? `${completionFiles.length} fichier(s) sélectionné(s)` : ""} />
                   {completionFiles.length > 0 ? (
                     <ul className="file-list">
                       {completionFiles.map((file, index) => (
@@ -2211,9 +2334,17 @@ export default function App() {
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <h2>Confirmer votre récompense</h2>
             <p className="muted">
-              Êtes-vous certain(e) de vouloir utiliser{" "}
-              <strong>{selectedReward.points} points</strong> pour{" "}
-              <strong>{selectedReward.title}</strong> ?
+              {selectedReward.code === "lifetime_warranty" ? (
+                <>
+                  Demandez la <strong>garantie à vie</strong> pour votre appareil à combustible liquide Qlima.
+                </>
+              ) : (
+                <>
+                  Êtes-vous certain(e) de vouloir utiliser{" "}
+                  <strong>{selectedReward.points} points</strong> pour{" "}
+                  <strong>{selectedReward.title}</strong> ?
+                </>
+              )}
             </p>
 
             {isWarrantyReward ? (
@@ -2228,24 +2359,20 @@ export default function App() {
                     fontSize: "14px",
                   }}
                 >
-                  Cette récompense est valable uniquement pour un appareil à
-                  combustible liquide Qlima toujours sous garantie.
+                  {selectedReward.code === "lifetime_warranty"
+                    ? "Renseignez la facture d’achat et le numéro de série de l’appareil pour lequel vous souhaitez activer la garantie à vie."
+                    : "Cette récompense est valable uniquement pour un appareil à combustible liquide Qlima toujours sous garantie."}
                 </div>
 
                 <div className="form-block">
                   <label>
                     Facture d’achat de l’appareil (avec date d’achat)
                   </label>
-                  <input
-                    type="file"
+                  <FileInput
                     accept=".pdf,.jpg,.jpeg,.png"
                     onChange={handleRewardInvoiceFileChange}
+                    fileName={rewardInvoiceFile?.name || ""}
                   />
-                  {rewardInvoiceFile ? (
-                    <p className="muted" style={{ marginTop: "8px" }}>
-                      Fichier sélectionné : {rewardInvoiceFile.name}
-                    </p>
-                  ) : null}
                 </div>
 
                 <div className="form-block">
@@ -2262,28 +2389,30 @@ export default function App() {
                   />
                 </div>
 
-                <div
-                  className="form-block"
-                  style={{ display: "flex", alignItems: "center", gap: "10px" }}
-                >
-                  <input
-                    id="warrantyConfirmed"
-                    type="checkbox"
-                    checked={rewardForm.warrantyConfirmed}
-                    onChange={(e) =>
-                      handleRewardFormChange(
-                        "warrantyConfirmed",
-                        e.target.checked,
-                      )
-                    }
-                  />
-                  <label
-                    htmlFor="warrantyConfirmed"
-                    style={{ marginBottom: 0 }}
+                {selectedReward.code !== "lifetime_warranty" ? (
+                  <div
+                    className="form-block"
+                    style={{ display: "flex", alignItems: "center", gap: "10px" }}
                   >
-                    Je confirme que l’appareil est toujours sous garantie.
-                  </label>
-                </div>
+                    <input
+                      id="warrantyConfirmed"
+                      type="checkbox"
+                      checked={rewardForm.warrantyConfirmed}
+                      onChange={(e) =>
+                        handleRewardFormChange(
+                          "warrantyConfirmed",
+                          e.target.checked,
+                        )
+                      }
+                    />
+                    <label
+                      htmlFor="warrantyConfirmed"
+                      style={{ marginBottom: 0 }}
+                    >
+                      Je confirme que l’appareil est toujours sous garantie.
+                    </label>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -2444,16 +2573,11 @@ export default function App() {
 
                 <div className="form-block">
                   <label>RIB bancaire en PDF</label>
-                  <input
-                    type="file"
+                  <FileInput
                     accept=".pdf,application/pdf"
                     onChange={handleRewardBankDetailsFileChange}
+                    fileName={rewardBankDetailsFile?.name || ""}
                   />
-                  {rewardBankDetailsFile ? (
-                    <p className="muted" style={{ marginTop: "8px" }}>
-                      Fichier sélectionné : {rewardBankDetailsFile.name}
-                    </p>
-                  ) : null}
                   <p
                     style={{
                       marginTop: "12px",
@@ -2472,16 +2596,11 @@ export default function App() {
                       Ticket de caisse ou facture d’achat du bidon de Kristal
                       Shine
                     </label>
-                    <input
-                      type="file"
+                    <FileInput
                       accept=".pdf,.jpg,.jpeg,.png"
                       onChange={handleRewardPurchaseProofFileChange}
+                      fileName={rewardPurchaseProofFile?.name || ""}
                     />
-                    {rewardPurchaseProofFile ? (
-                      <p className="muted" style={{ marginTop: "8px" }}>
-                        Fichier sélectionné : {rewardPurchaseProofFile.name}
-                      </p>
-                    ) : null}
                   </div>
                 ) : selectedReward.code === "refund_50_appliance" ? (
                   <div className="form-block">
@@ -2489,16 +2608,11 @@ export default function App() {
                       Ticket de caisse ou facture d’achat de l’appareil à
                       combustible liquide Qlima
                     </label>
-                    <input
-                      type="file"
+                    <FileInput
                       accept=".pdf,.jpg,.jpeg,.png"
                       onChange={handleRewardPurchaseProofFileChange}
+                      fileName={rewardPurchaseProofFile?.name || ""}
                     />
-                    {rewardPurchaseProofFile ? (
-                      <p className="muted" style={{ marginTop: "8px" }}>
-                        Fichier sélectionné : {rewardPurchaseProofFile.name}
-                      </p>
-                    ) : null}
                   </div>
                 ) : null}
               </div>
