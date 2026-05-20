@@ -1758,6 +1758,15 @@ export default function Admin({ session, onBack }) {
                                       {submission.admin_message}
                                     </p>
                                   ) : null}
+
+                                  {normalizeDocuments(submission.documents).length > 0 ? (
+                                    <div style={{ marginTop: "8px" }}>
+                                      <p className="muted" style={{ marginBottom: "6px" }}>
+                                        <strong>Pièces jointes :</strong>
+                                      </p>
+                                      {renderDocuments(submission.documents, "")}
+                                    </div>
+                                  ) : null}
                                 </div>
                               ))}
                             </div>
@@ -1813,6 +1822,15 @@ export default function Admin({ session, onBack }) {
                                       <span>S/N : {reward.serial_number}</span>
                                     ) : null}
                                   </div>
+
+                                  {normalizeDocuments(reward.supporting_documents).length > 0 ? (
+                                    <div style={{ marginTop: "8px" }}>
+                                      <p className="muted" style={{ marginBottom: "6px" }}>
+                                        <strong>Pièces jointes :</strong>
+                                      </p>
+                                      {renderDocuments(reward.supporting_documents, "")}
+                                    </div>
+                                  ) : null}
                                 </div>
                               ))}
                             </div>
