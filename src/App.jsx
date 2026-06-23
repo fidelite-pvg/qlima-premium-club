@@ -454,6 +454,14 @@ export default function App() {
     setUploadedFiles(files);
   };
 
+  const removeUploadedFile = (index) => {
+    setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const removeCompletionFile = (index) => {
+    setCompletionFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleCompletionFiles = async (e) => {
     const files = Array.from(e.target.files || []);
     for (const file of files) {
@@ -1826,7 +1834,10 @@ export default function App() {
                 {uploadedFiles.length > 0 && (
                   <ul className="file-list">
                     {uploadedFiles.map((file, index) => (
-                      <li key={`${file.name}-${index}`}>{file.name}</li>
+                      <li key={`${file.name}-${index}`} className="file-list-item">
+                        <span>{file.name}</span>
+                        <button type="button" className="file-remove-btn" onClick={() => removeUploadedFile(index)}>×</button>
+                      </li>
                     ))}
                   </ul>
                 )}
@@ -2267,7 +2278,10 @@ export default function App() {
                   {completionFiles.length > 0 ? (
                     <ul className="file-list">
                       {completionFiles.map((file, index) => (
-                        <li key={`${file.name}-${index}`}>{file.name}</li>
+                        <li key={`${file.name}-${index}`} className="file-list-item">
+                          <span>{file.name}</span>
+                          <button type="button" className="file-remove-btn" onClick={() => removeCompletionFile(index)}>×</button>
+                        </li>
                       ))}
                     </ul>
                   ) : null}
