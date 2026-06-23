@@ -5,6 +5,37 @@ import Admin from "./Admin";
 
 const STORAGE_BUCKET = "loyalty-documents";
 
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 Mo
+
+const ALLOWED_SIGNATURES = {
+  "application/pdf": [[0x25, 0x50, 0x44, 0x46]],
+  "image/jpeg": [[0xff, 0xd8, 0xff]],
+  "image/png": [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]],
+};
+
+function readFileBytes(file, numBytes) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(new Uint8Array(e.target.result));
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file.slice(0, numBytes));
+  });
+}
+
+async function validateFile(file, allowedMimeTypes = Object.keys(ALLOWED_SIGNATURES)) {
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    return `"${file.name}" dépasse la taille maximale de 10 Mo.`;
+  }
+  const bytes = await readFileBytes(file, 8);
+  for (const mimeType of allowedMimeTypes) {
+    const signatures = ALLOWED_SIGNATURES[mimeType] || [];
+    for (const sig of signatures) {
+      if (sig.every((byte, i) => bytes[i] === byte)) return null;
+    }
+  }
+  return `"${file.name}" : type de fichier non autorisé. Seuls les formats PDF, JPG et PNG sont acceptés.`;
+}
+
 const customerSubmissionTabs = [
   { key: "pending", label: "En attente" },
   { key: "validated", label: "Validé" },
@@ -409,13 +440,31 @@ export default function App() {
     setPurchaseForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleFiles = (e) => {
+  const handleFiles = async (e) => {
     const files = Array.from(e.target.files || []);
+    for (const file of files) {
+      const error = await validateFile(file);
+      if (error) {
+        setMessage(error);
+        e.target.value = "";
+        return;
+      }
+    }
+    setMessage("");
     setUploadedFiles(files);
   };
 
-  const handleCompletionFiles = (e) => {
+  const handleCompletionFiles = async (e) => {
     const files = Array.from(e.target.files || []);
+    for (const file of files) {
+      const error = await validateFile(file);
+      if (error) {
+        setCompletionMessage(error);
+        e.target.value = "";
+        return;
+      }
+    }
+    setCompletionMessage("");
     setCompletionFiles(files);
   };
 
@@ -485,18 +534,33 @@ export default function App() {
     setRewardForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleRewardInvoiceFileChange = (e) => {
+  const handleRewardInvoiceFileChange = async (e) => {
     const file = e.target.files?.[0] || null;
+    if (file) {
+      const error = await validateFile(file, ["application/pdf", "image/jpeg", "image/png"]);
+      if (error) { setRewardModalMessage(error); e.target.value = ""; return; }
+    }
+    setRewardModalMessage("");
     setRewardInvoiceFile(file);
   };
 
-  const handleRewardBankDetailsFileChange = (e) => {
+  const handleRewardBankDetailsFileChange = async (e) => {
     const file = e.target.files?.[0] || null;
+    if (file) {
+      const error = await validateFile(file, ["application/pdf"]);
+      if (error) { setRewardModalMessage(error); e.target.value = ""; return; }
+    }
+    setRewardModalMessage("");
     setRewardBankDetailsFile(file);
   };
 
-  const handleRewardPurchaseProofFileChange = (e) => {
+  const handleRewardPurchaseProofFileChange = async (e) => {
     const file = e.target.files?.[0] || null;
+    if (file) {
+      const error = await validateFile(file, ["application/pdf", "image/jpeg", "image/png"]);
+      if (error) { setRewardModalMessage(error); e.target.value = ""; return; }
+    }
+    setRewardModalMessage("");
     setRewardPurchaseProofFile(file);
   };
 
@@ -625,11 +689,7 @@ export default function App() {
         .toString(36)
         .slice(2)}.${extension}`;
 
-      const { error } = await supabase.storage
-        .from(STORAGE_BUCKET)
-        .upload(uniqueName, file);
-
-      if (error) throw error;
+      await secureUpload(file, uniqueName);
 
       uploaded.push({
         file_name: file.name,
@@ -951,6 +1011,28 @@ export default function App() {
     }
   };
 
+  const secureUpload = async (file, storagePath, allowedTypes) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("path", storagePath);
+    if (allowedTypes?.length) formData.append("allowedTypes", allowedTypes.join(","));
+
+    const res = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/secure-upload`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: formData,
+      },
+    );
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || "Erreur lors de l'upload");
+    return result;
+  };
+
   const uploadFiles = async () => {
     if (!session?.user || uploadedFiles.length === 0) return [];
 
@@ -962,11 +1044,7 @@ export default function App() {
         .toString(36)
         .slice(2)}.${extension}`;
 
-      const { error } = await supabase.storage
-        .from(STORAGE_BUCKET)
-        .upload(uniqueName, file);
-
-      if (error) throw error;
+      await secureUpload(file, uniqueName);
 
       uploaded.push({
         file_name: file.name,
@@ -980,19 +1058,16 @@ export default function App() {
   const uploadRewardSupportingFile = async (file, folder, documentKind) => {
     if (!session?.user || !file) return null;
 
+    const allowedTypes = folder === "reward-bank-details"
+      ? ["application/pdf"]
+      : ["application/pdf", "image/jpeg", "image/png"];
+
     const extension = file.name.split(".").pop();
     const uniqueName = `${session.user.id}/${folder}/${Date.now()}-${Math.random()
       .toString(36)
       .slice(2)}.${extension}`;
 
-    const { error } = await supabase.storage
-      .from(STORAGE_BUCKET)
-      .upload(uniqueName, file, {
-        contentType: file.type || undefined,
-        upsert: false,
-      });
-
-    if (error) throw error;
+    await secureUpload(file, uniqueName, allowedTypes);
 
     return {
       file_name: file.name,
@@ -1746,7 +1821,7 @@ export default function App() {
 
               <div className="form-block">
                 <label>Déposer les justificatifs</label>
-                <FileInput multiple onChange={handleFiles} fileName={uploadedFiles.length > 0 ? `${uploadedFiles.length} fichier(s) sélectionné(s)` : ""} />
+                <FileInput multiple accept=".pdf,.jpg,.jpeg,.png" onChange={handleFiles} fileName={uploadedFiles.length > 0 ? `${uploadedFiles.length} fichier(s) sélectionné(s)` : ""} />
 
                 {uploadedFiles.length > 0 && (
                   <ul className="file-list">
@@ -2188,7 +2263,7 @@ export default function App() {
 
                 <div className="form-block">
                   <label>Ajouter des justificatifs complémentaires</label>
-                  <FileInput multiple onChange={handleCompletionFiles} fileName={completionFiles.length > 0 ? `${completionFiles.length} fichier(s) sélectionné(s)` : ""} />
+                  <FileInput multiple accept=".pdf,.jpg,.jpeg,.png" onChange={handleCompletionFiles} fileName={completionFiles.length > 0 ? `${completionFiles.length} fichier(s) sélectionné(s)` : ""} />
                   {completionFiles.length > 0 ? (
                     <ul className="file-list">
                       {completionFiles.map((file, index) => (
