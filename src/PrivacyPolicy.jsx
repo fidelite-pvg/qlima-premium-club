@@ -73,19 +73,21 @@ export default function PrivacyPolicy() {
                 </p>
                 <p style={{ marginTop: 10 }}>
                   <strong>Cookies nécessaires (toujours actifs)</strong><br />
-                  Supabase dépose des cookies de session indispensables à l’authentification et
-                  au maintien de votre connexion (<code>sb-access-token</code>, <code>sb-refresh-token</code>).
-                  Ces cookies expirent à la fin de votre session ou au plus tard après 7 jours.
-                  Ils ne peuvent pas être refusés car ils sont strictement nécessaires au
-                  fonctionnement du service.
+                  Des cookies de session sont déposés pour assurer votre authentification et
+                  maintenir votre connexion à votre espace fidélité. Ces cookies expirent
+                  à la fin de votre session ou au plus tard après 7 jours. Ils ne peuvent
+                  pas être refusés car ils sont strictement nécessaires au fonctionnement
+                  du service.
                 </p>
                 <p style={{ marginTop: 10 }}>
                   <strong>Cookies de statistiques (soumis à consentement)</strong><br />
-                  Avec votre accord, Google Analytics dépose des cookies (<code>_ga</code>,{" "}
-                  <code>_ga_NNH58ZKNC3</code>) pour mesurer l’audience du site de façon anonyme.
-                  Ces cookies ont une durée de vie de 13 mois. Vous pouvez accepter ou refuser
-                  ces cookies via la bannière qui s’affiche lors de votre première visite, et
-                  modifier votre choix à tout moment via le bouton 🍪 en bas de page.
+                  Avec votre accord, Google Analytics mesure l’audience du site de façon
+                  anonyme. Les données collectées (pages visitées, durée de session) sont
+                  agrégées et ne permettent pas de vous identifier personnellement.
+                  Ces cookies ont une durée de vie de 13 mois. Vous pouvez accepter ou
+                  refuser leur dépôt via la bannière affichée lors de votre première visite,
+                  et modifier votre choix à tout moment via le bouton 🍪 présent en bas
+                  à gauche de chaque page.
                 </p>
               </div>
 
