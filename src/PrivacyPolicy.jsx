@@ -4,12 +4,12 @@ export default function PrivacyPolicy() {
   return (
     <div className="page">
       <section className="hero-shell" style={{ paddingBottom: 80 }}>
-        <a href="https://fidelite.qlima.fr">
+        <a href="https://fidelite.qlima.fr" style={{ position: "static" }}>
           <img src="/qlima-logo.png" alt="Qlima" className="hero-logo" />
         </a>
 
         <div className="hero-shape">
-          <h1 style={{ fontSize: "clamp(14px, 3.5vw, 22px)", wordBreak: "break-word" }}>Politique de<br />confidentialité</h1>
+          <h1 style={{ fontSize: "clamp(22px, 4.5vw, 42px)" }}>Politique de<br />confidentialité</h1>
           <p>Qlima Premium Club</p>
         </div>
 
