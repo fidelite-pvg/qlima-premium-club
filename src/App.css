@@ -1614,14 +1614,13 @@ textarea:focus {
 }
 
 .cookie-btn-accept {
-  background: var(--qlima-forest);
-  color: #fff;
+  background: #fff;
+  color: var(--qlima-forest);
   border: 1.5px solid var(--qlima-forest);
 }
 
 .cookie-btn-accept:hover {
-  background: #254d46;
-  border-color: #254d46;
+  background: #f0f5f3;
 }
 
 .cookie-btn-secondary {

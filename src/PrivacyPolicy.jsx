@@ -69,15 +69,44 @@ export default function PrivacyPolicy() {
               <div className="feature-card">
                 <h3>5. Cookies et outils de mesure</h3>
                 <p>
-                  Le site peut utiliser des cookies ou des outils d’analyse pour mesurer
-                  l’audience et améliorer l’expérience utilisateur. Leur utilisation est
-                  réalisée dans le respect du cadre réglementaire applicable, notamment en
-                  matière de consentement.
+                  Ce site utilise deux types de cookies :
+                </p>
+                <p style={{ marginTop: 10 }}>
+                  <strong>Cookies nécessaires (toujours actifs)</strong><br />
+                  Supabase dépose des cookies de session indispensables à l’authentification et
+                  au maintien de votre connexion (<code>sb-access-token</code>, <code>sb-refresh-token</code>).
+                  Ces cookies expirent à la fin de votre session ou au plus tard après 7 jours.
+                  Ils ne peuvent pas être refusés car ils sont strictement nécessaires au
+                  fonctionnement du service.
+                </p>
+                <p style={{ marginTop: 10 }}>
+                  <strong>Cookies de statistiques (soumis à consentement)</strong><br />
+                  Avec votre accord, Google Analytics dépose des cookies (<code>_ga</code>,{" "}
+                  <code>_ga_NNH58ZKNC3</code>) pour mesurer l’audience du site de façon anonyme.
+                  Ces cookies ont une durée de vie de 13 mois. Vous pouvez accepter ou refuser
+                  ces cookies via la bannière qui s’affiche lors de votre première visite, et
+                  modifier votre choix à tout moment via le bouton 🍪 en bas de page.
                 </p>
               </div>
 
               <div className="feature-card">
-                <h3>6. Coordonnées</h3>
+                <h3>6. Transferts de données hors Union européenne</h3>
+                <p>
+                  Google Analytics transfère certaines données vers des serveurs situés aux
+                  États-Unis. Ces transferts sont encadrés par le cadre de protection des
+                  données UE–États-Unis (EU-US Data Privacy Framework), auquel Google LLC a
+                  adhéré, conformément à la décision d’adéquation de la Commission européenne
+                  du 10 juillet 2023. L’adresse IP est anonymisée avant tout traitement.
+                </p>
+                <p style={{ marginTop: 10 }}>
+                  Supabase héberge les données dans l’Union européenne (région West EU).
+                  Aucun transfert vers des pays tiers n’est effectué pour le stockage
+                  des données personnelles.
+                </p>
+              </div>
+
+              <div className="feature-card">
+                <h3>7. Coordonnées</h3>
                 <p>
                   Qlima<br />
                   200 Avenue de la Mare Sansoure<br />
