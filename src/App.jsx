@@ -183,16 +183,6 @@ const rewards = [
   },
 ];
 
-const welcomeWheelChoices = [
-  { label: "1 pt", points: 1, color: "#32645c" },
-  { label: "1 pt", points: 1, color: "#87a290" },
-  { label: "1 pt", points: 1, color: "#f1b434" },
-  { label: "2 pts", points: 2, color: "#dbe5df" },
-  { label: "2 pts", points: 2, color: "#192021" },
-  { label: "3 pts", points: 3, color: "#f8d98a" },
-  { label: "4 pts", points: 4, color: "#5d6c66" },
-];
-
 function FileInput({ id, accept, multiple, onChange, fileName }) {
   const inputRef = useRef(null);
   return (
@@ -269,11 +259,6 @@ export default function App() {
   const [rewardBankDetailsFile, setRewardBankDetailsFile] = useState(null);
   const [rewardPurchaseProofFile, setRewardPurchaseProofFile] = useState(null);
   const [isSubmittingReward, setIsSubmittingReward] = useState(false);
-  const [welcomeWheelOpen, setWelcomeWheelOpen] = useState(false);
-  const [welcomeWheelSpinning, setWelcomeWheelSpinning] = useState(false);
-  const [welcomeWheelResult, setWelcomeWheelResult] = useState(null);
-  const [welcomeWheelRotation, setWelcomeWheelRotation] = useState(0);
-  const [welcomeBonusPoints, setWelcomeBonusPoints] = useState(0);
   const [deleteAccountStep, setDeleteAccountStep] = useState(0);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [deleteAccountError, setDeleteAccountError] = useState("");
@@ -301,29 +286,6 @@ export default function App() {
   });
 
   const isAdmin = session?.user?.email === "fidelite@pvg.eu";
-
-  const getWelcomeBonusStorageKey = (userId) =>
-    userId ? `qlima-welcome-wheel-${userId}` : null;
-
-  const readWelcomeBonusState = (userId) => {
-    if (typeof window === "undefined" || !userId) return null;
-    const storageKey = getWelcomeBonusStorageKey(userId);
-    if (!storageKey) return null;
-    const rawValue = window.localStorage.getItem(storageKey);
-    if (!rawValue) return null;
-    try {
-      return JSON.parse(rawValue);
-    } catch {
-      return null;
-    }
-  };
-
-  const persistWelcomeBonusState = (userId, payload) => {
-    if (typeof window === "undefined" || !userId) return;
-    const storageKey = getWelcomeBonusStorageKey(userId);
-    if (!storageKey) return;
-    window.localStorage.setItem(storageKey, JSON.stringify(payload));
-  };
 
   useEffect(() => {
     let isMounted = true;
@@ -377,23 +339,7 @@ export default function App() {
     if (session?.user && !isAdmin) {
       fetchSubmissions();
       fetchRewardRedemptions();
-
-      const storedReward = readWelcomeBonusState(session.user.id);
-      if (storedReward?.claimed) {
-        setWelcomeBonusPoints(storedReward.points || 0);
-        setWelcomeWheelOpen(false);
-        setWelcomeWheelResult(null);
-        return;
-      }
-
-      setWelcomeBonusPoints(0);
-      setWelcomeWheelOpen(true);
-      setWelcomeWheelResult(null);
-      return;
     }
-
-    setWelcomeWheelOpen(false);
-    setWelcomeWheelResult(null);
   }, [session, isAdmin]);
 
   useEffect(() => {
@@ -428,8 +374,8 @@ export default function App() {
       .filter((item) => item.status === "validated")
       .reduce((acc, item) => acc + (item.points_awarded || 0), 0);
 
-    return Math.max(earnedPoints - spentPoints + welcomeBonusPoints, 0);
-  }, [submissions, spentPoints, welcomeBonusPoints]);
+    return Math.max(earnedPoints - spentPoints, 0);
+  }, [submissions, spentPoints]);
 
   const lifetimeWarrantyEligibility = useMemo(() => {
     const validated = submissions.filter((s) => s.status === "validated");
@@ -1005,41 +951,6 @@ export default function App() {
     setRewardModalMessage("");
     setRewardInvoiceFile(null);
     setRewardBankDetailsFile(null);
-    setWelcomeBonusPoints(0);
-    setWelcomeWheelOpen(false);
-    setWelcomeWheelResult(null);
-    setWelcomeWheelSpinning(false);
-    setWelcomeWheelRotation(0);
-  };
-
-  const handleLaunchWelcomeWheel = () => {
-    if (!session?.user || welcomeWheelSpinning) return;
-
-    const resultIndex = Math.floor(Math.random() * welcomeWheelChoices.length);
-    const result = welcomeWheelChoices[resultIndex];
-    const segmentAngle = 360 / welcomeWheelChoices.length;
-    const targetRotation = 360 * 7 + (360 - (segmentAngle * (resultIndex + 0.5)));
-
-    setWelcomeWheelSpinning(true);
-    setWelcomeWheelResult(null);
-    setWelcomeWheelRotation(targetRotation);
-
-    window.setTimeout(() => {
-      setWelcomeWheelResult(result);
-      setWelcomeBonusPoints(result.points);
-      persistWelcomeBonusState(session.user.id, {
-        claimed: true,
-        points: result.points,
-        awardedAt: new Date().toISOString(),
-      });
-      setWelcomeWheelSpinning(false);
-    }, 4200);
-  };
-
-  const closeWelcomeWheel = () => {
-    setWelcomeWheelOpen(false);
-    setWelcomeWheelResult(null);
-    setWelcomeWheelSpinning(false);
   };
 
   const deleteAccount = async () => {
@@ -2267,81 +2178,6 @@ export default function App() {
           Déconnexion
         </button>
       </div>
-
-      {welcomeWheelOpen ? (
-        <div className="modal-overlay" onClick={closeWelcomeWheel}>
-          <div
-            className="modal-card welcome-wheel-card"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2>Votre récompense de bienvenue</h2>
-            <p className="muted">
-              Lancez la roulette pour découvrir votre premier gain de points.
-            </p>
-
-            <div className="welcome-wheel-shell">
-              <div
-                className={`welcome-wheel ${welcomeWheelSpinning ? "is-spinning" : ""}`}
-                style={{ transform: `rotate(${welcomeWheelRotation}deg)` }}
-              >
-                {welcomeWheelChoices.map((segment, index) => (
-                  <div
-                    key={`${segment.label}-${index}`}
-                    className="welcome-wheel-segment"
-                    style={{
-                      background: segment.color,
-                      transform: `rotate(${(360 / welcomeWheelChoices.length) * index}deg)`,
-                    }}
-                  >
-                    <span>{segment.label}</span>
-                  </div>
-                ))}
-                <div className="welcome-wheel-center">Bienvenue</div>
-              </div>
-
-              <div className="welcome-wheel-pointer" aria-hidden="true" />
-            </div>
-
-            {welcomeWheelResult ? (
-              <div className="welcome-wheel-result">
-                <strong>
-                  Vous avez gagné {welcomeWheelResult.points} point
-                  {welcomeWheelResult.points > 1 ? "s" : ""} !
-                </strong>
-                <p className="muted">
-                  Cette récompense a été ajoutée à votre solde pour cette
-                  première connexion.
-                </p>
-              </div>
-            ) : (
-              <p className="muted">
-                Les 1 et 2 points apparaissent plus souvent, tandis que les 3
-                et 4 points restent plus rares.
-              </p>
-            )}
-
-            <div className="auth-buttons" style={{ marginTop: "24px" }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={closeWelcomeWheel}
-              >
-                {welcomeWheelResult ? "Fermer" : "Annuler"}
-              </button>
-              {!welcomeWheelResult ? (
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={handleLaunchWelcomeWheel}
-                  disabled={welcomeWheelSpinning}
-                >
-                  {welcomeWheelSpinning ? "Roulette..." : "Lancer la roulette"}
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       {selectedSubmission ? (
         <div className="modal-overlay" onClick={closeSubmissionDetails}>
