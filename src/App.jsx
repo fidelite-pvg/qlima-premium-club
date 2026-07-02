@@ -125,6 +125,7 @@ const fuels = [
   { name: "Kristal Shine", points: 4 },
   { name: "Bright 20 L", points: 3 },
   { name: "Spark 20 L", points: 2 },
+  { name: "Kristal Shine 10 L", points: 2 },
   { name: "Bright 10 L", points: 1 },
   { name: "Pure 20 L", points: 1 },
 ];
