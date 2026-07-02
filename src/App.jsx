@@ -122,7 +122,7 @@ const normalizeDocuments = (rawValue) => {
 };
 
 const fuels = [
-  { name: "Kristal Shine", points: 4 },
+  { name: "Kristal Shine 20 L", points: 4 },
   { name: "Bright 20 L", points: 3 },
   { name: "Spark 20 L", points: 2 },
   { name: "Kristal Shine 10 L", points: 2 },
@@ -130,7 +130,7 @@ const fuels = [
   { name: "Pure 20 L", points: 1 },
 ];
 
-const LIFETIME_WARRANTY_FUELS = ["Kristal Shine", "Bright 20 L"];
+const LIFETIME_WARRANTY_FUELS = ["Kristal Shine", "Kristal Shine 20 L", "Bright 20 L"];
 
 const rewards = [
   {
@@ -281,7 +281,7 @@ export default function App() {
   });
 
   const [purchaseForm, setPurchaseForm] = useState({
-    fuel: "Kristal Shine",
+    fuel: "Kristal Shine 20 L",
     qty: 1,
     comments: "",
   });
@@ -1171,7 +1171,7 @@ export default function App() {
       );
 
       setPurchaseForm({
-        fuel: "Kristal Shine",
+        fuel: "Kristal Shine 20 L",
         qty: 1,
         comments: "",
       });
@@ -1988,12 +1988,12 @@ export default function App() {
                         <strong>{reward.title}</strong>
                         {disqualified ? (
                           <p className="muted" style={{ color: "#b42318", marginTop: "4px" }}>
-                            Vous avez soumis un combustible non éligible à cette offre (réservée au Kristal Shine et au Bright 20 L uniquement).
+                            Vous avez soumis un combustible non éligible à cette offre (réservée au Kristal Shine 20 L et au Bright 20 L uniquement).
                           </p>
                         ) : (
                           <>
                             <p className="muted" style={{ marginTop: "4px" }}>
-                              {count}/6 bidons validés — Kristal Shine ou Bright 20 L exclusivement
+                              {count}/6 bidons validés — Kristal Shine 20 L ou Bright 20 L exclusivement
                             </p>
                             <div
                               style={{
