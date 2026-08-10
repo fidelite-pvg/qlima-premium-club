@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./lib/supabase";
+import { translateAuthError } from "./lib/authErrors";
 
 const STORAGE_BUCKET = "loyalty-documents";
 
@@ -131,6 +132,10 @@ export default function Admin({ session, onBack }) {
   const [documentUrls, setDocumentUrls] = useState({});
   const [loadingDocumentKey, setLoadingDocumentKey] = useState("");
   const [selectedClientKey, setSelectedClientKey] = useState("");
+  const [manualAdjustments, setManualAdjustments] = useState({});
+  const [manualAdjustmentSubmitting, setManualAdjustmentSubmitting] =
+    useState("");
+  const [manualAdjustmentMessage, setManualAdjustmentMessage] = useState("");
 
   useEffect(() => {
     fetchAllSubmissions();
@@ -238,7 +243,7 @@ export default function Admin({ session, onBack }) {
       .order("created_at", { ascending: false });
 
     if (error) {
-      setMessage(error.message);
+      setMessage(translateAuthError(error.message));
     } else {
       setSubmissions(data || []);
     }
@@ -366,7 +371,7 @@ export default function Admin({ session, onBack }) {
       .eq("id", submission.id);
 
     if (error) {
-      setMessage(error.message);
+      setMessage(translateAuthError(error.message));
       return;
     }
 
@@ -392,6 +397,71 @@ export default function Admin({ session, onBack }) {
     }
 
     setMessage("Demande mise à jour avec succès et e-mail envoyé.");
+    fetchAllSubmissions();
+  };
+
+  const submitManualAdjustment = async (client) => {
+    setManualAdjustmentMessage("");
+
+    const form = manualAdjustments[client.key] || {};
+    const points = Number(form.points);
+    const reason = (form.reason || "").trim();
+
+    if (!Number.isInteger(points) || points === 0) {
+      setManualAdjustmentMessage(
+        "Indiquez un nombre entier de points (positif ou négatif) différent de 0.",
+      );
+      return;
+    }
+
+    if (!reason) {
+      setManualAdjustmentMessage(
+        "Indiquez un motif pour cet ajustement manuel.",
+      );
+      return;
+    }
+
+    if (!client.user_id) {
+      setManualAdjustmentMessage(
+        "Impossible d'identifier le compte client (user_id manquant).",
+      );
+      return;
+    }
+
+    setManualAdjustmentSubmitting(client.key);
+
+    const payload = {
+      user_id: client.user_id,
+      first_name: client.first_name || "",
+      last_name: client.last_name || "",
+      email: client.email || "",
+      fuel: "Ajustement manuel",
+      quantity: 0,
+      comments: reason,
+      estimated_points: points,
+      points_awarded: points,
+      status: "validated",
+      admin_message: reason,
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: session.user.email,
+    };
+
+    const { error } = await supabase.from("loyalty_submissions").insert(payload);
+
+    setManualAdjustmentSubmitting("");
+
+    if (error) {
+      setManualAdjustmentMessage(translateAuthError(error.message));
+      return;
+    }
+
+    setManualAdjustments((prev) => ({
+      ...prev,
+      [client.key]: { points: "", reason: "" },
+    }));
+    setManualAdjustmentMessage(
+      `${points > 0 ? "+" : ""}${points} point(s) ajouté(s) au compte de ${client.displayName}.`,
+    );
     fetchAllSubmissions();
   };
 
@@ -602,6 +672,7 @@ export default function Admin({ session, onBack }) {
         last_name: item.last_name || "",
         phone: item.phone || "",
         address: item.address || "",
+        user_id: item.user_id || "",
         submissions: [],
         rewards: [],
         lastActivityAt: null,
@@ -612,6 +683,7 @@ export default function Admin({ session, onBack }) {
       existing.phone = existing.phone || item.phone || "";
       existing.address = existing.address || item.address || "";
       existing.email = existing.email || item.email || "";
+      existing.user_id = existing.user_id || item.user_id || "";
 
       if (item.created_at) {
         const createdAt = new Date(item.created_at).toISOString();
@@ -1660,6 +1732,85 @@ export default function Admin({ session, onBack }) {
                             {selectedClient.pendingRewardsCount} en attente
                           </small>
                         </div>
+                      </div>
+
+                      <div className="panel" style={{ marginTop: "20px" }}>
+                        <div className="admin-mini-header">
+                          <h3>Ajustement manuel de points</h3>
+                        </div>
+                        <p className="muted" style={{ marginTop: 0 }}>
+                          Ajoute (ou retire, avec un nombre négatif) des
+                          points au solde de ce client, en dehors d'une
+                          demande de points classique.
+                        </p>
+
+                        <div
+                          className="auth-buttons"
+                          style={{ flexWrap: "wrap", alignItems: "flex-end" }}
+                        >
+                          <div className="form-block" style={{ maxWidth: "140px" }}>
+                            <label>Points</label>
+                            <input
+                              type="number"
+                              step="1"
+                              placeholder="ex : 1 ou -1"
+                              value={
+                                manualAdjustments[selectedClient.key]
+                                  ?.points ?? ""
+                              }
+                              onChange={(e) =>
+                                setManualAdjustments((prev) => ({
+                                  ...prev,
+                                  [selectedClient.key]: {
+                                    ...prev[selectedClient.key],
+                                    points: e.target.value,
+                                  },
+                                }))
+                              }
+                            />
+                          </div>
+
+                          <div className="form-block" style={{ flex: 1 }}>
+                            <label>Motif</label>
+                            <input
+                              type="text"
+                              placeholder="ex : geste commercial, correction d'erreur..."
+                              value={
+                                manualAdjustments[selectedClient.key]
+                                  ?.reason ?? ""
+                              }
+                              onChange={(e) =>
+                                setManualAdjustments((prev) => ({
+                                  ...prev,
+                                  [selectedClient.key]: {
+                                    ...prev[selectedClient.key],
+                                    reason: e.target.value,
+                                  },
+                                }))
+                              }
+                            />
+                          </div>
+
+                          <button
+                            className="btn btn-primary"
+                            disabled={
+                              manualAdjustmentSubmitting === selectedClient.key
+                            }
+                            onClick={() =>
+                              submitManualAdjustment(selectedClient)
+                            }
+                          >
+                            {manualAdjustmentSubmitting === selectedClient.key
+                              ? "Enregistrement..."
+                              : "Appliquer l'ajustement"}
+                          </button>
+                        </div>
+
+                        {manualAdjustmentMessage ? (
+                          <p className="muted" style={{ marginTop: "10px" }}>
+                            {manualAdjustmentMessage}
+                          </p>
+                        ) : null}
                       </div>
 
                       <div className="client-detail-meta">
