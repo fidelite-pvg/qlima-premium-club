@@ -136,6 +136,10 @@ export default function Admin({ session, onBack }) {
   const [manualAdjustmentSubmitting, setManualAdjustmentSubmitting] =
     useState("");
   const [manualAdjustmentMessage, setManualAdjustmentMessage] = useState("");
+  const [clientLookupEmail, setClientLookupEmail] = useState("");
+  const [clientLookupLoading, setClientLookupLoading] = useState(false);
+  const [clientLookupMessage, setClientLookupMessage] = useState("");
+  const [lookedUpClient, setLookedUpClient] = useState(null);
 
   useEffect(() => {
     fetchAllSubmissions();
@@ -463,6 +467,68 @@ export default function Admin({ session, onBack }) {
       `${points > 0 ? "+" : ""}${points} point(s) ajouté(s) au compte de ${client.displayName}.`,
     );
     fetchAllSubmissions();
+  };
+
+  const lookupClientByEmail = async () => {
+    const email = clientLookupEmail.trim().toLowerCase();
+    setClientLookupMessage("");
+    setLookedUpClient(null);
+
+    if (!email) {
+      setClientLookupMessage("Saisissez une adresse e-mail.");
+      return;
+    }
+
+    setClientLookupLoading(true);
+
+    const { data, error } = await supabase.functions.invoke(
+      "admin-lookup-user",
+      { body: { email } },
+    );
+
+    setClientLookupLoading(false);
+
+    if (error || data?.error) {
+      setClientLookupMessage(
+        data?.error ||
+          translateAuthError(error?.message) ||
+          "Aucun compte trouvé avec cette adresse e-mail.",
+      );
+      return;
+    }
+
+    const key = (data.email || email).toLowerCase();
+    const client = {
+      key,
+      email: data.email || email,
+      first_name: data.first_name || "",
+      last_name: data.last_name || "",
+      phone: data.phone || "",
+      address: data.address || "",
+      user_id: data.id,
+      displayName: formatClientName(data.first_name, data.last_name),
+      submissions: [],
+      rewards: [],
+      pointsAwarded: 0,
+      estimatedPoints: 0,
+      pointsUsedApproved: 0,
+      pointsUsedRequested: 0,
+      balance: 0,
+      submissionsCount: 0,
+      rewardsCount: 0,
+      pendingSubmissionsCount: 0,
+      pendingRewardsCount: 0,
+      activity: [],
+      lastSubmission: null,
+      lastReward: null,
+      lastActivityAt: null,
+    };
+
+    setLookedUpClient(client);
+    setSelectedClientKey(key);
+    setClientLookupMessage(
+      `Compte trouvé : ${client.displayName || client.email}. Aucun historique pour l'instant — vous pouvez lui ajouter des points ci-contre.`,
+    );
   };
 
   const pendingSubmissions = submissions.filter((s) => s.status === "pending");
@@ -800,17 +866,27 @@ export default function Admin({ session, onBack }) {
   }, [clientRecords, searchTerm]);
 
   const selectedClient = useMemo(() => {
-    if (!filteredClientRecords.length) return null;
-
-    return (
-      filteredClientRecords.find(
-        (client) => client.key === selectedClientKey,
-      ) || filteredClientRecords[0]
+    const realMatch = filteredClientRecords.find(
+      (client) => client.key === selectedClientKey,
     );
-  }, [filteredClientRecords, selectedClientKey]);
+    if (realMatch) return realMatch;
+
+    if (lookedUpClient && selectedClientKey === lookedUpClient.key) {
+      return lookedUpClient;
+    }
+
+    return filteredClientRecords[0] || null;
+  }, [filteredClientRecords, selectedClientKey, lookedUpClient]);
+
+  useEffect(() => {
+    if (lookedUpClient && clientRecords.some((c) => c.key === lookedUpClient.key)) {
+      setLookedUpClient(null);
+    }
+  }, [clientRecords, lookedUpClient]);
 
   useEffect(() => {
     if (sectionTab !== "clients") return;
+    if (lookedUpClient && selectedClientKey === lookedUpClient.key) return;
 
     if (!filteredClientRecords.length) {
       setSelectedClientKey("");
@@ -829,7 +905,7 @@ export default function Admin({ session, onBack }) {
     if (!stillExists) {
       setSelectedClientKey(filteredClientRecords[0].key);
     }
-  }, [filteredClientRecords, selectedClientKey, sectionTab]);
+  }, [filteredClientRecords, selectedClientKey, sectionTab, lookedUpClient]);
 
   const renderDocuments = (documents, emptyLabel = "Aucun document") => {
     const normalized = normalizeDocuments(documents);
@@ -1622,7 +1698,54 @@ export default function Admin({ session, onBack }) {
                 </div>
               </div>
 
-              {filteredClientRecords.length === 0 ? (
+              <div className="panel" style={{ marginTop: "20px" }}>
+                <div className="admin-mini-header">
+                  <h3>Rechercher un compte inscrit</h3>
+                </div>
+                <p className="muted" style={{ marginTop: 0 }}>
+                  Un client n'apparaît dans la liste ci-dessous qu'après sa
+                  première demande de points ou de récompense. Pour un compte
+                  inscrit qui n'a encore rien demandé, retrouvez-le ici par
+                  e-mail pour lui créer un ajustement de points.
+                </p>
+
+                <div
+                  className="auth-buttons"
+                  style={{ flexWrap: "wrap", alignItems: "flex-end" }}
+                >
+                  <div className="form-block" style={{ flex: 1, minWidth: "220px" }}>
+                    <label>E-mail du compte</label>
+                    <input
+                      type="email"
+                      placeholder="client@exemple.fr"
+                      value={clientLookupEmail}
+                      onChange={(e) => setClientLookupEmail(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          lookupClientByEmail();
+                        }
+                      }}
+                    />
+                  </div>
+
+                  <button
+                    className="btn btn-primary"
+                    disabled={clientLookupLoading}
+                    onClick={lookupClientByEmail}
+                  >
+                    {clientLookupLoading ? "Recherche..." : "Rechercher"}
+                  </button>
+                </div>
+
+                {clientLookupMessage ? (
+                  <p className="muted" style={{ marginTop: "10px" }}>
+                    {clientLookupMessage}
+                  </p>
+                ) : null}
+              </div>
+
+              {filteredClientRecords.length === 0 && !lookedUpClient ? (
                 <div className="panel" style={{ marginTop: "20px" }}>
                   <p className="muted">
                     Aucun client ne correspond à la recherche.

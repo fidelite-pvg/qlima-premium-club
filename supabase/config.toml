@@ -46,3 +46,7 @@ verify_jwt = false
 [functions.delete-account]
 enabled = true
 verify_jwt = true
+
+[functions.admin-lookup-user]
+enabled = true
+verify_jwt = true
