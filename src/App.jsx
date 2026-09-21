@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import "./App.css";
 import { supabase } from "./lib/supabase";
+import { translateAuthError } from "./lib/authErrors";
 import Admin from "./Admin";
 
 const STORAGE_BUCKET = "loyalty-documents";
@@ -226,6 +227,7 @@ export default function App() {
   const [mode, setMode] = useState("login");
   const [authPanelOpen, setAuthPanelOpen] = useState(false);
   const [message, setMessage] = useState("");
+  const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
   const [selectedReward, setSelectedReward] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [submissions, setSubmissions] = useState([]);
@@ -807,76 +809,81 @@ export default function App() {
 
   const signUp = async (e) => {
     e.preventDefault();
+    if (isAuthSubmitting) return;
+    setIsAuthSubmitting(true);
     setMessage("");
 
-    const { data, error } = await supabase.auth.signUp({
-      email: normalizedEmail,
-      password: authForm.password,
-      options: {
-        data: {
-          first_name: authForm.firstName,
-          last_name: authForm.lastName,
-          phone: authForm.phone,
-          address: authForm.address,
-          postal_code: authForm.postalCode,
-          city: authForm.city,
-          full_address: formattedAddress,
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: normalizedEmail,
+        password: authForm.password,
+        options: {
+          data: {
+            first_name: authForm.firstName,
+            last_name: authForm.lastName,
+            phone: authForm.phone,
+            address: authForm.address,
+            postal_code: authForm.postalCode,
+            city: authForm.city,
+            full_address: formattedAddress,
+          },
         },
-      },
-    });
+      });
 
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
+      if (error) {
+        setMessage(translateAuthError(error.message));
+        return;
+      }
 
-    if (
-      data.user &&
-      data.user.identities &&
-      data.user.identities.length === 0
-    ) {
-      setMessage(
-        "Un compte existe déjà avec cette adresse e-mail. Essayez de vous connecter ou de réinitialiser votre mot de passe.",
-      );
-      setMode("login");
-      return;
-    }
+      if (
+        data.user &&
+        data.user.identities &&
+        data.user.identities.length === 0
+      ) {
+        setMessage(
+          "Un compte existe déjà avec cette adresse e-mail. Essayez de vous connecter ou de réinitialiser votre mot de passe.",
+        );
+        setMode("login");
+        return;
+      }
 
-    if (data.session) {
-      setMessage("Compte créé avec succès. Vous êtes maintenant connecté.");
-      return;
-    }
+      if (data.session) {
+        setMessage("Compte créé avec succès. Vous êtes maintenant connecté.");
+        return;
+      }
 
-    if (data.user) {
-      setMessage(
-        "Compte créé. Vérifiez votre boîte mail pour confirmer votre adresse e-mail avant de vous connecter.",
-      );
-      setMode("login");
+      if (data.user) {
+        setMessage(
+          "Compte créé. Vérifiez votre boîte mail pour confirmer votre adresse e-mail avant de vous connecter.",
+        );
+        setMode("login");
+      }
+    } finally {
+      setIsAuthSubmitting(false);
     }
   };
 
   const signIn = async (e) => {
     e.preventDefault();
+    if (isAuthSubmitting) return;
+    setIsAuthSubmitting(true);
     setMessage("");
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: normalizedEmail,
-      password: authForm.password,
-    });
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password: authForm.password,
+      });
 
-    if (error) {
-      if (error.message === "Invalid login credentials") {
-        setMessage(
-          "Connexion impossible : soit le mot de passe est incorrect, soit l’adresse e-mail n’a pas encore été confirmée. Utilisez “Mot de passe oublié” si besoin.",
-        );
+      if (error) {
+        setMessage(translateAuthError(error.message));
         return;
       }
 
-      setMessage(error.message);
-      return;
+      setMessage("");
+    } finally {
+      setIsAuthSubmitting(false);
     }
-
-    setMessage("");
   };
 
   const resetPassword = async (e) => {
@@ -897,14 +904,7 @@ export default function App() {
     );
 
     if (error) {
-      if (error.message?.toLowerCase().includes("rate limit")) {
-        setMessage(
-          "Trop de demandes d’e-mails ont été effectuées. Attendez un peu avant de réessayer.",
-        );
-        return;
-      }
-
-      setMessage(error.message);
+      setMessage(translateAuthError(error.message));
       return;
     }
 
@@ -930,7 +930,7 @@ export default function App() {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
 
     if (error) {
-      setMessage(error.message);
+      setMessage(translateAuthError(error.message));
       return;
     }
 
@@ -1678,8 +1678,16 @@ export default function App() {
                   </div>
 
                   <div className="auth-buttons">
-                    <button type="submit" className="btn btn-primary">
-                      {mode === "login" ? "Se connecter" : "Créer mon compte"}
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={isAuthSubmitting}
+                    >
+                      {isAuthSubmitting
+                        ? "Veuillez patienter..."
+                        : mode === "login"
+                          ? "Se connecter"
+                          : "Créer mon compte"}
                     </button>
                   </div>
 

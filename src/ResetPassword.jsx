@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "./lib/supabase";
+import { translateAuthError } from "./lib/authErrors";
 
 export default function ResetPassword() {
   const [password, setPassword] = useState("");
@@ -30,7 +31,7 @@ export default function ResetPassword() {
     setLoading(false);
 
     if (error) {
-      setMessage(error.message);
+      setMessage(translateAuthError(error.message));
       return;
     }
 
