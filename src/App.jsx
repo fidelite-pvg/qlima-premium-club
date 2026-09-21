@@ -383,16 +383,30 @@ export default function App() {
   const lifetimeWarrantyEligibility = useMemo(() => {
     const validated = submissions.filter((s) => s.status === "validated");
     if (validated.length === 0) {
-      return { eligible: false, count: 0, disqualified: false };
+      return { eligible: false, count: 0, disqualified: false, pointsUsed: 0 };
     }
     const hasOtherFuel = validated.some(
       (s) => !LIFETIME_WARRANTY_FUELS.includes(s.fuel),
     );
     if (hasOtherFuel) {
-      return { eligible: false, count: 0, disqualified: true };
+      return { eligible: false, count: 0, disqualified: true, pointsUsed: 0 };
     }
     const totalBidons = validated.reduce((sum, s) => sum + (s.quantity || 0), 0);
-    return { eligible: totalBidons >= 6, count: totalBidons, disqualified: false };
+    const kristalQty = validated
+      .filter((s) => s.fuel === "Kristal Shine" || s.fuel === "Kristal Shine 20 L")
+      .reduce((sum, s) => sum + (s.quantity || 0), 0);
+    const brightQty = validated
+      .filter((s) => s.fuel === "Bright 20 L")
+      .reduce((sum, s) => sum + (s.quantity || 0), 0);
+    const kristalUsed = Math.min(kristalQty, 6);
+    const brightUsed = Math.min(brightQty, 6 - kristalUsed);
+    const pointsUsed = kristalUsed * 4 + brightUsed * 3;
+    return {
+      eligible: totalBidons >= 6,
+      count: totalBidons,
+      disqualified: false,
+      pointsUsed,
+    };
   }, [submissions]);
 
   const nextReward = useMemo(() => {
@@ -1324,7 +1338,10 @@ export default function App() {
         reward_code: selectedReward.code,
         reward_title: selectedReward.title,
         reward_type: selectedReward.type,
-        points_used: selectedReward.points,
+        points_used:
+          selectedReward.code === "lifetime_warranty"
+            ? lifetimeWarrantyEligibility.pointsUsed
+            : selectedReward.points,
         status: "pending",
         rib: null,
         iban: null,
