@@ -132,6 +132,7 @@ const fuels = [
 ];
 
 const LIFETIME_WARRANTY_FUELS = ["Kristal Shine", "Kristal Shine 20 L", "Bright 20 L"];
+const LIFETIME_WARRANTY_MIN_POINTS = 18;
 
 const rewards = [
   {
@@ -381,15 +382,29 @@ export default function App() {
   }, [submissions, spentPoints]);
 
   const lifetimeWarrantyEligibility = useMemo(() => {
-    const validated = submissions.filter((s) => s.status === "validated");
+    const validated = submissions.filter(
+      (s) => s.status === "validated" && s.fuel !== "Ajustement manuel",
+    );
     if (validated.length === 0) {
-      return { eligible: false, count: 0, disqualified: false, pointsUsed: 0 };
+      return {
+        eligible: false,
+        count: 0,
+        disqualified: false,
+        insufficientPoints: false,
+        pointsUsed: 0,
+      };
     }
     const hasOtherFuel = validated.some(
       (s) => !LIFETIME_WARRANTY_FUELS.includes(s.fuel),
     );
     if (hasOtherFuel) {
-      return { eligible: false, count: 0, disqualified: true, pointsUsed: 0 };
+      return {
+        eligible: false,
+        count: 0,
+        disqualified: true,
+        insufficientPoints: false,
+        pointsUsed: 0,
+      };
     }
     const totalBidons = validated.reduce((sum, s) => sum + (s.quantity || 0), 0);
     const kristalQty = validated
@@ -401,13 +416,17 @@ export default function App() {
     const kristalUsed = Math.min(kristalQty, 6);
     const brightUsed = Math.min(brightQty, 6 - kristalUsed);
     const pointsUsed = kristalUsed * 4 + brightUsed * 3;
+    const hasEnoughBidons = totalBidons >= 6;
+    const insufficientPoints =
+      hasEnoughBidons && userPoints < LIFETIME_WARRANTY_MIN_POINTS;
     return {
-      eligible: totalBidons >= 6,
+      eligible: hasEnoughBidons && userPoints >= LIFETIME_WARRANTY_MIN_POINTS,
       count: totalBidons,
       disqualified: false,
+      insufficientPoints,
       pointsUsed,
     };
-  }, [submissions]);
+  }, [submissions, userPoints]);
 
   const nextReward = useMemo(() => {
     return (
@@ -2001,7 +2020,7 @@ export default function App() {
             <div className="reward-list">
               {rewards.map((reward) => {
                 if (reward.code === "lifetime_warranty") {
-                  const { eligible, count, disqualified } =
+                  const { eligible, count, disqualified, insufficientPoints } =
                     lifetimeWarrantyEligibility;
                   const progressPct = Math.min((count / 6) * 100, 100);
                   return (
@@ -2020,6 +2039,11 @@ export default function App() {
                             <p className="muted" style={{ marginTop: "4px" }}>
                               {count}/6 bidons validés — Kristal Shine 20 L ou Bright 20 L exclusivement
                             </p>
+                            {insufficientPoints ? (
+                              <p className="muted" style={{ color: "#b42318", marginTop: "4px" }}>
+                                Il vous faut au moins {LIFETIME_WARRANTY_MIN_POINTS} points disponibles pour bénéficier de cette offre.
+                              </p>
+                            ) : null}
                             <div
                               style={{
                                 marginTop: "6px",
