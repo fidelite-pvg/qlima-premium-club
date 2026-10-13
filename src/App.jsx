@@ -131,7 +131,14 @@ const fuels = [
   { name: "Pure 20 L", points: 1 },
 ];
 
-const LIFETIME_WARRANTY_FUELS = ["Kristal Shine", "Kristal Shine 20 L", "Bright 20 L"];
+const LIFETIME_WARRANTY_ELIGIBLE_FUELS = [
+  "Kristal Shine",
+  "Kristal Shine 20 L",
+  "Kristal Shine 10 L",
+  "Bright 20 L",
+  "Bright 10 L",
+];
+const LIFETIME_WARRANTY_COUNTED_FUELS = ["Kristal Shine", "Kristal Shine 20 L", "Bright 20 L"];
 const LIFETIME_WARRANTY_MIN_POINTS = 18;
 
 const rewards = [
@@ -395,7 +402,7 @@ export default function App() {
       };
     }
     const hasOtherFuel = validated.some(
-      (s) => !LIFETIME_WARRANTY_FUELS.includes(s.fuel),
+      (s) => !LIFETIME_WARRANTY_ELIGIBLE_FUELS.includes(s.fuel),
     );
     if (hasOtherFuel) {
       return {
@@ -406,12 +413,14 @@ export default function App() {
         pointsUsed: 0,
       };
     }
-    const totalBidons = validated.reduce((sum, s) => sum + (s.quantity || 0), 0);
     const kristalQty = validated
       .filter((s) => s.fuel === "Kristal Shine" || s.fuel === "Kristal Shine 20 L")
       .reduce((sum, s) => sum + (s.quantity || 0), 0);
     const brightQty = validated
       .filter((s) => s.fuel === "Bright 20 L")
+      .reduce((sum, s) => sum + (s.quantity || 0), 0);
+    const totalBidons = validated
+      .filter((s) => LIFETIME_WARRANTY_COUNTED_FUELS.includes(s.fuel))
       .reduce((sum, s) => sum + (s.quantity || 0), 0);
     const kristalUsed = Math.min(kristalQty, 6);
     const brightUsed = Math.min(brightQty, 6 - kristalUsed);
@@ -2032,12 +2041,12 @@ export default function App() {
                         <strong>{reward.title}</strong>
                         {disqualified ? (
                           <p className="muted" style={{ color: "#b42318", marginTop: "4px" }}>
-                            Vous avez soumis un combustible non éligible à cette offre (réservée au Kristal Shine 20 L et au Bright 20 L uniquement).
+                            Vous avez soumis un combustible non éligible à cette offre (réservée au Kristal Shine et au Bright, formats 10 L et 20 L).
                           </p>
                         ) : (
                           <>
                             <p className="muted" style={{ marginTop: "4px" }}>
-                              {count}/6 bidons validés — Kristal Shine 20 L ou Bright 20 L exclusivement
+                              {count}/6 bidons validés — seuls les formats Kristal Shine 20 L et Bright 20 L comptent pour cette offre
                             </p>
                             {insufficientPoints ? (
                               <p className="muted" style={{ color: "#b42318", marginTop: "4px" }}>
