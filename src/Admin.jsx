@@ -122,6 +122,7 @@ export default function Admin({ session, onBack }) {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [adminMessages, setAdminMessages] = useState({});
+  const [pointsOverrides, setPointsOverrides] = useState({});
   const [rewardAdminMessages, setRewardAdminMessages] = useState({});
   const [activeTab, setActiveTab] = useState("pending");
   const [rewardTab, setRewardTab] = useState("pending");
@@ -360,12 +361,28 @@ export default function Admin({ session, onBack }) {
     const adminMessage =
       adminMessages[submission.id] ?? submission.admin_message ?? "";
 
+    const overridePoints = pointsOverrides[submission.id];
+    const pointsToAward =
+      overridePoints !== undefined && overridePoints !== ""
+        ? Number(overridePoints)
+        : submission.estimated_points;
+
+    if (
+      status === "validated" &&
+      (!Number.isInteger(pointsToAward) || pointsToAward < 0)
+    ) {
+      setMessage(
+        "Indiquez un nombre de points entier et positif avant de valider.",
+      );
+      return;
+    }
+
     const payload = {
       status,
       admin_message: adminMessage,
       reviewed_at: new Date().toISOString(),
       reviewed_by: session.user.email,
-      points_awarded: status === "validated" ? submission.estimated_points : 0,
+      points_awarded: status === "validated" ? pointsToAward : 0,
       client_has_unread_update: true,
     };
 
@@ -1363,6 +1380,29 @@ export default function Admin({ session, onBack }) {
                         submission.documents,
                         "Aucune pièce jointe transmise",
                       )}
+                    </div>
+
+                    <div className="form-block" style={{ marginTop: "20px" }}>
+                      <label>Points à attribuer lors de la validation</label>
+                      <input
+                        type="number"
+                        value={
+                          pointsOverrides[submission.id] ??
+                          submission.estimated_points ??
+                          0
+                        }
+                        onChange={(e) =>
+                          setPointsOverrides((prev) => ({
+                            ...prev,
+                            [submission.id]: e.target.value,
+                          }))
+                        }
+                      />
+                      <p className="muted" style={{ marginTop: "6px" }}>
+                        Valeur pré-remplie avec les points estimés selon le
+                        produit déclaré par le client. Modifiez-la si la
+                        facture jointe correspond à un autre produit.
+                      </p>
                     </div>
 
                     <div className="form-block" style={{ marginTop: "20px" }}>
