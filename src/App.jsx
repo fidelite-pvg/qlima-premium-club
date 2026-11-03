@@ -2024,6 +2024,9 @@ export default function App() {
             }}>
               <strong>📅 Période de validité</strong><br />
               Les récompenses sont valables du <strong>01/07/2026 au 30/06/2027</strong>. Le programme de fidélité est révisé chaque année afin d'adapter ses offres. Qlima se réserve le droit de reconduire ou non ce programme. En cas de non-reconduction, les points cumulés pourront être supprimés et ne seront plus utilisables.
+              <br /><br />
+              <strong>🇫🇷 Programme réservé à la France</strong><br />
+              Ce programme de fidélité est réservé aux résidents de France. Les récompenses ne sont envoyées qu'à des adresses situées en France.
             </div>
 
             <div className="reward-list">
