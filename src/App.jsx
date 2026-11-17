@@ -1889,6 +1889,9 @@ export default function App() {
               <div className="form-block">
                 <label>Déposer les justificatifs</label>
                 <FileInput multiple accept=".pdf,.jpg,.jpeg,.png" onChange={handleFiles} fileName={uploadedFiles.length > 0 ? `${uploadedFiles.length} fichier(s) sélectionné(s)` : ""} />
+                <p className="form-help--required">
+                  Merci d’envoyer une photo ou un fichier montrant l’intégralité du ticket de caisse ou de la facture. La date d’achat ou le numéro de ticket doit obligatoirement être visible, sinon la demande sera refusée.
+                </p>
 
                 {uploadedFiles.length > 0 && (
                   <ul className="file-list">
@@ -2342,6 +2345,9 @@ export default function App() {
                 <div className="form-block">
                   <label>Ajouter des justificatifs complémentaires</label>
                   <FileInput multiple accept=".pdf,.jpg,.jpeg,.png" onChange={handleCompletionFiles} fileName={completionFiles.length > 0 ? `${completionFiles.length} fichier(s) sélectionné(s)` : ""} />
+                  <p className="form-help--required">
+                    Merci d’envoyer une photo ou un fichier montrant l’intégralité du ticket de caisse ou de la facture. La date d’achat ou le numéro de ticket doit obligatoirement être visible, sinon la demande sera refusée.
+                  </p>
                   {completionFiles.length > 0 ? (
                     <ul className="file-list">
                       {completionFiles.map((file, index) => (

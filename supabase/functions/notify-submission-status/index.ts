@@ -84,6 +84,11 @@ Deno.serve(async (req: Request) => {
         ? `<p><strong>Points attribués :</strong> ${escapeHtml(String(submission.points_awarded))} points</p>`
         : "";
 
+    const documentReminderBlock =
+      submission.status === "needs_info"
+        ? `<p>Pour rappel, le justificatif doit montrer l’intégralité du ticket de caisse ou de la facture, avec la date d’achat ou le numéro de ticket obligatoirement visible.</p>`
+        : "";
+
     const statusSpecificIntro =
       submission.status === "needs_info"
         ? "Notre équipe a besoin d’un complément pour poursuivre le traitement de votre dossier."
@@ -106,6 +111,7 @@ Deno.serve(async (req: Request) => {
         </ul>
         ${pointsBlock}
         ${adminMessageBlock}
+        ${documentReminderBlock}
         <p>Connectez-vous à votre espace fidélité pour consulter le détail.</p>
         <p>Cordialement,<br>L'équipe Qlima</p>
       </div>
