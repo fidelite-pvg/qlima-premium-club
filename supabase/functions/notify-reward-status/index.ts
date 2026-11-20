@@ -90,6 +90,11 @@ serve(async (req) => {
         ${approvedBlock}
         ${adminMessageBlock}
         <p>Connectez-vous à votre espace fidélité pour consulter le détail et, si nécessaire, compléter votre dossier.</p>
+        <p style="margin: 24px 0;">
+          <a href="https://fidelite.qlima.fr" style="background-color: #32645c; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 999px; font-weight: 600; display: inline-block;">
+            Accéder à mon espace fidélité
+          </a>
+        </p>
         <p>Cordialement,<br>L'équipe Qlima</p>
       </div>
     `;

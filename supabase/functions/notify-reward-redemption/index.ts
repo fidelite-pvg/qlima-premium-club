@@ -90,6 +90,11 @@ serve(async (req) => {
         </ul>
         <p>Votre demande sera traitée dans les meilleurs délais. Vous recevrez un nouvel e-mail dès qu'elle aura été étudiée.</p>
         <p>Vous pouvez également suivre son statut directement depuis votre espace fidélité.</p>
+        <p style="margin: 24px 0;">
+          <a href="https://fidelite.qlima.fr" style="background-color: #32645c; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 999px; font-weight: 600; display: inline-block;">
+            Accéder à mon espace fidélité
+          </a>
+        </p>
         <p>Cordialement,<br>L'équipe Qlima</p>
       </div>
     `;
